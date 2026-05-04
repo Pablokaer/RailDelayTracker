@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="'Irish Rail — ' + ${stationName}">Irish Rail — Station</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --ir-green: #009A44;
+            --ir-green-dark: #007a35;
+            --bg-main: #0b0f14;
+            --bg-card: #111820;
+            --bg-row: #141c26;
+            --bg-row-alt: #0f1620;
+            --border: #1e2d3d;
+            --text-primary: #e8f0f8;
+            --text-muted: #5d7a99;
+            --red: #e03434;
+            --amber: #f59e0b;
+            --blue: #3b82f6;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* ── Header ── */
+        .site-header {
+            background: linear-gradient(180deg, #0a1a0f 0%, #0b1a12 100%);
+            border-bottom: 2px solid var(--ir-green);
+            padding: 1rem 0;
+        }
+        .ir-logo {
+            width: 44px; height: 44px;
+            background: var(--ir-green);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; flex-shrink: 0;
+        }
+        .live-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(0,154,68,.15);
+            border: 1px solid rgba(0,154,68,.4);
+            color: #3ecf73;
+            border-radius: 20px;
+            padding: 3px 12px;
+            font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+        }
+        .live-dot {
+            width: 7px; height: 7px;
+            background: #3ecf73;
+            border-radius: 50%;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: .3; }
+        }
+
+        /* ── Stat cards ── */
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: .9rem 1.2rem;
+        }
+        .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
+        .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); margin-top: 3px; }
+
+        /* ── Filter tabs ── */
+        .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: 20px;
+            padding: 5px 16px;
+            font-size: .82rem; cursor: pointer;
+            transition: all .15s;
+        }
+        .filter-btn:hover { border-color: var(--ir-green); color: var(--text-primary); }
+        .filter-btn.active {
+            background: var(--ir-green);
+            border-color: var(--ir-green);
+            color: #fff;
+        }
+
+        /* ── Table ── */
+        .board-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        thead th {
+            background: #0d1822;
+            color: var(--text-muted);
+            font-size: .7rem;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            padding: .75rem 1rem;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--border);
+        }
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background .12s;
+        }
+        tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+        tbody tr:nth-child(odd)  { background: var(--bg-row); }
+        tbody tr:hover { background: #192436; }
+        tbody tr:last-child { border-bottom: none; }
+        td { padding: .7rem 1rem; font-size: .88rem; vertical-align: middle; }
+
+        /* ── Train code chip ── */
+        .train-chip {
+            display: inline-block;
+            background: rgba(0,154,68,.12);
+            border: 1px solid rgba(0,154,68,.3);
+            color: #3ecf73;
+            border-radius: 5px;
+            padding: 2px 8px;
+            font-size: .8rem; font-weight: 700; font-family: monospace;
+        }
+
+        /* ── Due In ── */
+        .due-now   { color: #3ecf73; font-weight: 700; }
+        .due-soon  { color: #f59e0b; font-weight: 600; }
+        .due-later { color: var(--text-muted); }
+
+        /* ── Status badge ── */
+        .badge-ontime { background: rgba(59,130,246,.18); color: #60a5fa; border: 1px solid rgba(59,130,246,.3); border-radius: 5px; padding: 2px 8px; font-size: .75rem; }
+        .badge-late   { background: rgba(224,52,52,.18);  color: #f87171; border: 1px solid rgba(224,52,52,.3);  border-radius: 5px; padding: 2px 8px; font-size: .75rem; }
+        .badge-status {
+            background: rgba(255,255,255,.06);
+            border: 1px solid var(--border);
+            border-radius: 5px; padding: 2px 8px;
+            font-size: .75rem; color: var(--text-muted);
+        }
+
+        /* ── Direction ── */
+        .dir-north { color: #60a5fa; }
+        .dir-south { color: #c084fc; }
+
+        /* ── Location type ── */
+        .loc-origin { color: #3ecf73; font-size: .72rem; }
+        .loc-dest   { color: #f87171; font-size: .72rem; }
+        .loc-stop   { color: var(--text-muted); font-size: .72rem; }
+
+        /* ── Progress ring for countdown ── */
+        .countdown-ring { position: relative; width: 40px; height: 40px; flex-shrink: 0; }
+        .countdown-ring svg { transform: rotate(-90deg); }
+        .countdown-ring .ring-bg { fill: none; stroke: var(--border); stroke-width: 3; }
+        .countdown-ring .ring-fg { fill: none; stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset .5s; }
+        .countdown-ring .ring-text {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: .65rem; font-weight: 700; line-height: 1;
+        }
+
+        /* ── Empty state ── */
+        .empty-state { text-align: center; padding: 5rem 2rem; color: var(--text-muted); }
+        .empty-state i { font-size: 4rem; opacity: .25; }
+
+        /* ── Refresh bar ── */
+        .refresh-progress {
+            height: 2px;
+            background: var(--ir-green);
+            width: 100%;
+            transform-origin: left;
+            animation: shrink 30s linear forwards;
+        }
+        @keyframes shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+        /* ── Station selector ── */
+        .station-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: .85rem;
+            cursor: pointer;
+            outline: none;
+            transition: border-color .15s;
+        }
+        .station-select:focus, .station-select:hover { border-color: var(--ir-green); }
+        .station-select option { background: #111820; }
+
+        /* ── Scrollable table on mobile ── */
+        .table-scroll { overflow-x: auto; }
+
+        /* ── Tooltip column for lastLocation ── */
+        [data-tooltip] { position: relative; cursor: default; }
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%);
+            background: #1e2d3d; border: 1px solid var(--border);
+            color: var(--text-primary); font-size: .75rem;
+            padding: 4px 10px; border-radius: 6px; white-space: nowrap; z-index: 99;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══════════ HEADER ══════════ -->
+<header class="site-header">
+    <div class="container-fluid px-4">
+        <div class="d-flex align-items-center gap-3">
+            <div class="ir-logo">
+                <i class="bi bi-train-front text-white"></i>
+            </div>
+            <div>
+                <div class="fw-bold fs-5 lh-1" id="station-title" th:text="${stationName}">Station</div>
+                <div style="font-size:.8rem;color:var(--text-muted);">Irish Rail · Real-Time Board</div>
+            </div>
+            <div class="ms-3">
+                <select class="station-select" id="station-selector" onchange="changeStation(this.value)">
+                    <option th:each="s : ${stations}"
+                            th:value="${s.stationCode}"
+                            th:text="${s.stationDesc}"
+                            th:selected="${s.stationCode == selectedCode}">
+                    </option>
+                </select>
+            </div>
+            <div class="ms-auto d-flex flex-column align-items-end gap-1">
+                <div class="live-pill"><span class="live-dot"></span>LIVE</div>
+                <div style="font-size:.75rem;color:var(--text-muted);">
+                    Updated <span id="clock" th:text="${updatedAt}">--:--:--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ══════════ MAIN ══════════ -->
+<main class="container-fluid px-4 py-4">
+
+    <!-- Stat row -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" th:text="${totalTrains}">0</div>
+                <div class="stat-label"><i class="bi bi-train-front me-1"></i>Total trains</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card" style="border-color:rgba(63,207,115,.3)">
+                <div class="stat-value" style="color:#3ecf73" th:text="${onTimeCount}">0</div>
+                <div class="stat-label"><i class="bi bi-check-circle me-1"></i>On time</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card" style="border-color:rgba(224,52,52,.3)">
+                <div class="stat-value" style="color:#f87171" th:text="${delayedCount}">0</div>
+                <div class="stat-label"><i class="bi bi-exclamation-triangle me-1"></i>Delayed</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" id="countdown-stat">30</div>
+                <div class="stat-label"><i class="bi bi-arrow-clockwise me-1"></i>Refresh in (s)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Refresh progress bar -->
+    <div style="height:2px;background:var(--border);border-radius:2px;margin-bottom:1.5rem;">
+        <div class="refresh-progress" id="refresh-bar"></div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+        <div class="filter-bar" id="filter-bar">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="north"><i class="bi bi-arrow-up me-1"></i>Northbound</button>
+            <button class="filter-btn" data-filter="south"><i class="bi bi-arrow-down me-1"></i>Southbound</button>
+            <button class="filter-btn" data-filter="delayed"><i class="bi bi-exclamation-circle me-1"></i>Delayed only</button>
+        </div>
+        <button class="filter-btn" id="refresh-btn" onclick="fetchTrains()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh now
+        </button>
+    </div>
+
+    <!-- Board -->
+    <div class="board-wrap">
+        <div class="table-scroll">
+            <table id="train-table">
+                <thead>
+                    <tr>
+                        <th>Train</th>
+                        <th>Type</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
+                        <th>Direction</th>
+                        <th>Sch. Dep</th>
+                        <th>Exp. Dep</th>
+                        <th>Sch. Arr</th>
+                        <th>Exp. Arr</th>
+                        <th>Due in</th>
+                        <th>Status</th>
+                        <th>Delay</th>
+                        <th>Last seen</th>
+                        <th>Stop type</th>
+                    </tr>
+                </thead>
+                <tbody id="train-tbody">
+                    <!-- Thymeleaf initial render -->
+                    <tr th:if="${trains.isEmpty()}">
+                        <td colspan="14">
+                            <div class="empty-state">
+                                <i class="bi bi-train-front-fill d-block mb-3"></i>
+                                <div class="fw-semibold mb-1">No trains found</div>
+                                <small>No services scheduled right now, or the API is unavailable.</small>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:each="t : ${trains}"
+                        th:attr="data-dir=${t.direction}, data-late=${t.late}">
+                        <td>
+                            <span class="train-chip" th:text="${t.trainCode}"></span>
+                        </td>
+                        <td style="color:var(--text-muted);font-size:.78rem;" th:text="${t.trainType}"></td>
+                        <td th:text="${t.origin}"></td>
+                        <td th:text="${t.destination}"></td>
+                        <td>
+                            <span th:if="${t.direction == 'Northbound'}" class="dir-north">
+                                <i class="bi bi-arrow-up-short"></i>N
+                            </span>
+                            <span th:if="${t.direction == 'Southbound'}" class="dir-south">
+                                <i class="bi bi-arrow-down-short"></i>S
+                            </span>
+                            <span th:if="${t.direction != 'Northbound' and t.direction != 'Southbound'}"
+                                  style="color:var(--text-muted);font-size:.8rem;" th:text="${t.direction}"></span>
+                        </td>
+                        <td th:text="${t.schDepart}"></td>
+                        <td th:text="${t.expDepart}"></td>
+                        <td th:text="${t.schArrival}"></td>
+                        <td th:text="${t.expArrival}"></td>
+                        <td>
+                            <span th:if="${t.dueIn == 0}" class="due-now">Now</span>
+                            <span th:if="${t.dueIn > 0 and t.dueIn <= 5}" class="due-soon"
+                                  th:text="${t.dueIn + ' min'}"></span>
+                            <span th:if="${t.dueIn > 5}" class="due-later"
+                                  th:text="${t.dueIn + ' min'}"></span>
+                        </td>
+                        <td>
+                            <span class="badge-status" th:text="${t.status}"></span>
+                        </td>
+                        <td>
+                            <span th:if="${t.late > 0}" class="badge-late"
+                                  th:text="${'+' + t.late + ' min'}"></span>
+                            <span th:if="${t.late <= 0}" class="badge-ontime">On time</span>
+                        </td>
+                        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <span th:if="${t.lastLocation != null and !t.lastLocation.isEmpty()}"
+                                  th:text="${t.lastLocation}"
+                                  th:attr="data-tooltip=${t.lastLocation}"
+                                  style="color:var(--text-muted);font-size:.8rem;"></span>
+                            <span th:if="${t.lastLocation == null or t.lastLocation.isEmpty()}"
+                                  style="color:var(--border)">—</span>
+                        </td>
+                        <td>
+                            <span th:if="${t.locationType == 'O'}" class="loc-origin">Origin</span>
+                            <span th:if="${t.locationType == 'D'}" class="loc-dest">Destination</span>
+                            <span th:if="${t.locationType == 'S'}" class="loc-stop">Stop</span>
+                            <span th:if="${t.locationType != 'O' and t.locationType != 'D' and t.locationType != 'S'}"
+                                  style="color:var(--text-muted);font-size:.78rem;" th:text="${t.locationType}"></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-between align-items-center" style="color:var(--text-muted);font-size:.75rem;">
+        <span>Station: <strong style="color:var(--text-primary)" th:text="${stationName}">—</strong>
+        · Code: <strong style="color:var(--text-primary)" th:text="${selectedCode}">—</strong>
+        · Irish Rail Real-Time API</span>
+        <span id="row-count"></span>
+    </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    let activeFilter = 'all';
+    let refreshTimer;
+    let countdown = 30;
+    let currentStation = document.getElementById('station-selector')?.value || 'CNLLY';
+
+    function changeStation(code) {
+        window.location.href = '/get?stationCode=' + code;
+    }
+
+    // ── Filter logic ──────────────────────────────
+    document.getElementById('filter-bar').addEventListener('click', e => {
+        const btn = e.target.closest('.filter-btn[data-filter]');
+        if (!btn) return;
+        document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        applyFilter();
+    });
+
+    function applyFilter() {
+        const rows = document.querySelectorAll('#train-tbody tr[data-dir]');
+        let visible = 0;
+        rows.forEach(row => {
+            const dir  = (row.dataset.dir  || '').toLowerCase();
+            const late = parseInt(row.dataset.late || '0', 10);
+            let show = false;
+            if (activeFilter === 'all')     show = true;
+            if (activeFilter === 'north')   show = dir.includes('north');
+            if (activeFilter === 'south')   show = dir.includes('south');
+            if (activeFilter === 'delayed') show = late > 0;
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const rc = document.getElementById('row-count');
+        if (rc) rc.textContent = `Showing ${visible} train${visible !== 1 ? 's' : ''}`;
+    }
+
+    // ── Live fetch & rebuild ──────────────────────
+    function renderRow(t) {
+        const dirHtml = t.direction === 'Northbound'
+            ? `<span class="dir-north"><i class="bi bi-arrow-up-short"></i>N</span>`
+            : t.direction === 'Southbound'
+            ? `<span class="dir-south"><i class="bi bi-arrow-down-short"></i>S</span>`
+            : `<span style="color:var(--text-muted);font-size:.8rem;">${t.direction || '—'}</span>`;
+
+        const dueHtml = t.dueIn === 0
+            ? `<span class="due-now">Now</span>`
+            : t.dueIn <= 5
+            ? `<span class="due-soon">${t.dueIn} min</span>`
+            : `<span class="due-later">${t.dueIn} min</span>`;
+
+        const delayHtml = t.late > 0
+            ? `<span class="badge-late">+${t.late} min</span>`
+            : `<span class="badge-ontime">On time</span>`;
+
+        const locLabel = t.locationType === 'O' ? `<span class="loc-origin">Origin</span>`
+                       : t.locationType === 'D' ? `<span class="loc-dest">Destination</span>`
+                       : t.locationType === 'S' ? `<span class="loc-stop">Stop</span>`
+                       : `<span style="color:var(--text-muted);font-size:.78rem;">${t.locationType || ''}</span>`;
+
+        const lastLoc = (t.lastLocation && t.lastLocation.trim())
+            ? `<span data-tooltip="${t.lastLocation}" style="color:var(--text-muted);font-size:.8rem;">${t.lastLocation}</span>`
+            : `<span style="color:var(--border)">—</span>`;
+
+        return `<tr data-dir="${t.direction || ''}" data-late="${t.late}">
+            <td><span class="train-chip">${t.trainCode || '—'}</span></td>
+            <td style="color:var(--text-muted);font-size:.78rem;">${t.trainType || '—'}</td>
+            <td>${t.origin || '—'}</td>
+            <td>${t.destination || '—'}</td>
+            <td>${dirHtml}</td>
+            <td>${t.schDepart || '—'}</td>
+            <td>${t.expDepart || '—'}</td>
+            <td>${t.schArrival || '—'}</td>
+            <td>${t.expArrival || '—'}</td>
+            <td>${dueHtml}</td>
+            <td><span class="badge-status">${t.status || '—'}</span></td>
+            <td>${delayHtml}</td>
+            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${lastLoc}</td>
+            <td>${locLabel}</td>
+        </tr>`;
+    }
+
+    async function fetchTrains() {
+        const btn = document.getElementById('refresh-btn');
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1 spin"></i>Loading…';
+        try {
+            const res = await fetch('/api/trains?stationCode=' + currentStation);
+            if (!res.ok) throw new Error(res.statusText);
+            const trains = await res.json();
+
+            const tbody = document.getElementById('train-tbody');
+            if (trains.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="14">
+                    <div class="empty-state">
+                        <i class="bi bi-train-front-fill d-block mb-3"></i>
+                        <div class="fw-semibold mb-1">No trains found</div>
+                        <small>No services scheduled right now.</small>
+                    </div></td></tr>`;
+            } else {
+                tbody.innerHTML = trains.map(renderRow).join('');
+            }
+
+            const now = new Date().toLocaleTimeString('en-IE', {hour12: false});
+            document.getElementById('clock').textContent = now;
+
+            // update stats
+            const delayed = trains.filter(t => t.late > 0).length;
+            document.querySelectorAll('.stat-value')[0].textContent = trains.length;
+            document.querySelectorAll('.stat-value')[1].textContent = trains.length - delayed;
+            document.querySelectorAll('.stat-value')[2].textContent = delayed;
+
+            applyFilter();
+            resetCountdown();
+        } catch (err) {
+            console.error('Fetch failed:', err);
+        } finally {
+            btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Refresh now';
+        }
+    }
+
+    // ── Countdown ─────────────────────────────────
+    function resetCountdown() {
+        clearInterval(refreshTimer);
+        countdown = 30;
+
+        // restart CSS animation
+        const bar = document.getElementById('refresh-bar');
+        bar.style.animation = 'none';
+        bar.offsetHeight; // reflow
+        bar.style.animation = '';
+
+        refreshTimer = setInterval(() => {
+            countdown--;
+            const el = document.getElementById('countdown-stat');
+            if (el) el.textContent = countdown;
+            if (countdown <= 0) fetchTrains();
+        }, 1000);
+    }
+
+    // ── Spin style ────────────────────────────────
+    const style = document.createElement('style');
+    style.textContent = `.spin { animation: spin .6s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`;
+    document.head.appendChild(style);
+
+    // ── Boot ──────────────────────────────────────
+    applyFilter();
+    resetCountdown();
+</script>
+</body>
+</html>
