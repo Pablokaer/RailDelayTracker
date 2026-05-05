@@ -43,7 +43,10 @@ public class TrainController {
         LocalDate filterTo   = parseDate(to);
 
         // Live board
-        List<Station>   stations = irishRailService.getAllDartStations();
+        List<Station>   stations = irishRailService.getAllDartStations()
+                .stream()
+                .sorted(Comparator.comparing(Station::getStationDesc))
+                .collect(Collectors.toList());
         List<TrainInfo> trains   = irishRailService.getTrainsByStation(stationCode);
 
         Station selected   = stations.stream()
@@ -130,7 +133,10 @@ public class TrainController {
         List<DestinationStats> destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
         List<TripDelaySummary> top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
         Map<String, Long>      categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
-        List<Station>          stations     = irishRailService.getAllDartStations();
+        List<Station>          stations     = irishRailService.getAllDartStations()
+                .stream()
+                .sorted(Comparator.comparing(Station::getStationDesc))
+                .collect(Collectors.toList());
 
         long catOnTime  = dashboard.getOnTimeTrips();
         long catSmall   = categories.getOrDefault(DelayCategory.SMALL_DELAY.getDisplayLabel(),   0L);
