@@ -243,4 +243,116 @@ public interface TrainDelayRepository extends JpaRepository<TrainDelayRecord, Lo
     @Modifying
     @Query("DELETE FROM TrainDelayRecord r WHERE r.capturedAt < :cutoff")
     int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);
+
+    // ── station-filtered queries ──────────────────────────────────────────────
+
+    @Query("SELECT COUNT(r) FROM TrainDelayRecord r WHERE r.capturedAt >= :from AND r.capturedAt < :to AND UPPER(r.stationCode) = UPPER(:stationCode)")
+    long countByPeriodAndStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("stationCode") String stationCode);
+
+    @Query("SELECT MAX(r.lateMinutes) FROM TrainDelayRecord r WHERE r.capturedAt >= :from AND r.capturedAt < :to AND UPPER(r.stationCode) = UPPER(:stationCode)")
+    Integer findMaxDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, @Param("stationCode") String stationCode);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM (
+                SELECT DISTINCT train_code, station_code, train_date, sch_depart
+                FROM train_delay_records
+                WHERE captured_at >= :from AND captured_at < :to
+                  AND UPPER(station_code) = UPPER(:stationCode)
+            ) t
+            """, nativeQuery = true)
+    Long countUniqueTripsForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                    @Param("stationCode") String stationCode);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM (
+                SELECT 1
+                FROM train_delay_records
+                WHERE captured_at >= :from AND captured_at < :to
+                  AND UPPER(station_code) = UPPER(:stationCode)
+                GROUP BY train_code, station_code, train_date, sch_depart
+                HAVING MAX(late_minutes) >= :minDelay
+            ) t
+            """, nativeQuery = true)
+    Long countDelayedUniqueTripsForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                           @Param("stationCode") String stationCode, @Param("minDelay") int minDelay);
+
+    @Query(value = """
+            SELECT COALESCE(AVG(peak_delay), 0) FROM (
+                SELECT MAX(late_minutes) AS peak_delay
+                FROM train_delay_records
+                WHERE captured_at >= :from AND captured_at < :to
+                  AND UPPER(station_code) = UPPER(:stationCode)
+                GROUP BY train_code, station_code, train_date, sch_depart
+                HAVING MAX(late_minutes) >= :minDelay
+            ) t
+            """, nativeQuery = true)
+    Double findAvgPeakDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                      @Param("stationCode") String stationCode, @Param("minDelay") int minDelay);
+
+    @Query(value = """
+            SELECT EXTRACT(HOUR FROM captured_at)                                        AS hour,
+                   COUNT(*)                                                              AS total,
+                   SUM(CASE WHEN late_minutes > 0 THEN 1 ELSE 0 END)                    AS delayed,
+                   COALESCE(AVG(CASE WHEN late_minutes > 0
+                                     THEN CAST(late_minutes AS FLOAT) END), 0)          AS avg_delay
+            FROM train_delay_records
+            WHERE captured_at >= :from AND captured_at < :to
+              AND UPPER(station_code) = UPPER(:stationCode)
+            GROUP BY EXTRACT(HOUR FROM captured_at)
+            ORDER BY hour
+            """, nativeQuery = true)
+    List<Object[]> findHourlyStatsForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                             @Param("stationCode") String stationCode);
+
+    @Query(value = """
+            SELECT train_code, station_full_name, train_date, sch_depart, sch_arrival,
+                   direction, origin, destination,
+                   MAX(late_minutes)  AS peak_delay,
+                   COUNT(*)           AS snapshot_count
+            FROM train_delay_records
+            WHERE captured_at >= :from AND captured_at < :to
+              AND UPPER(station_code) = UPPER(:stationCode)
+            GROUP BY train_code, station_full_name, train_date, sch_depart, sch_arrival,
+                     direction, origin, destination
+            HAVING MAX(late_minutes) >= :minDelay
+            ORDER BY peak_delay DESC
+            LIMIT 10
+            """, nativeQuery = true)
+    List<Object[]> findTop10TripsByPeakDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                                       @Param("stationCode") String stationCode, @Param("minDelay") int minDelay);
+
+    @Query(value = """
+            WITH trips AS (
+                SELECT destination, train_code, station_code, train_date, sch_depart,
+                       MAX(late_minutes) AS peak_delay
+                FROM train_delay_records
+                WHERE destination IS NOT NULL AND destination <> ''
+                  AND captured_at >= :from AND captured_at < :to
+                  AND UPPER(station_code) = UPPER(:stationCode)
+                GROUP BY destination, train_code, station_code, train_date, sch_depart
+            )
+            SELECT destination,
+                   COUNT(*)                                                              AS total_trips,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END)             AS delayed_trips,
+                   COALESCE(AVG(CASE WHEN peak_delay >= :minDelay
+                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay
+            FROM trips
+            GROUP BY destination
+            HAVING SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END) > 0
+            ORDER BY avg_delay DESC
+            LIMIT 10
+            """, nativeQuery = true)
+    List<Object[]> findTopDestinationsByAvgDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                                           @Param("stationCode") String stationCode, @Param("minDelay") int minDelay);
+
+    @Query(value = """
+            SELECT MAX(late_minutes)
+            FROM train_delay_records
+            WHERE captured_at >= :from AND captured_at < :to
+              AND UPPER(station_code) = UPPER(:stationCode)
+            GROUP BY train_code, station_code, train_date, sch_depart
+            HAVING MAX(late_minutes) >= :minDelay
+            """, nativeQuery = true)
+    List<Object> findAllPeakDelaysAboveThresholdForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                                           @Param("stationCode") String stationCode, @Param("minDelay") int minDelay);
 }

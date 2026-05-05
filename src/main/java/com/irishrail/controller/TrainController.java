@@ -122,21 +122,48 @@ public class TrainController {
     public String overview(
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
+            @RequestParam(required = false) String stationCode,
             Model model) {
 
-        LocalDate filterFrom = parseDate(from);
-        LocalDate filterTo   = parseDate(to);
+        LocalDate filterFrom  = parseDate(from);
+        LocalDate filterTo    = parseDate(to);
+        boolean   hasStation  = stationCode != null && !stationCode.isBlank()
+                                && !"OVERVIEW".equalsIgnoreCase(stationCode);
 
-        DashboardSummary       dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
-        List<StationStats>     allStations  = delayTrackingService.getAllStationRanking(filterFrom, filterTo);
-        List<HourlyStats>      hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
-        List<DestinationStats> destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
-        List<TripDelaySummary> top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
-        Map<String, Long>      categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
-        List<Station>          stations     = irishRailService.getAllDartStations()
+        List<Station> stations = irishRailService.getAllDartStations()
                 .stream()
                 .sorted(Comparator.comparing(Station::getStationDesc))
                 .collect(Collectors.toList());
+
+        DashboardSummary       dashboard;
+        List<StationStats>     allStations  = Collections.emptyList();
+        List<HourlyStats>      hourly;
+        List<DestinationStats> destinations;
+        List<TripDelaySummary> top10;
+        Map<String, Long>      categories;
+
+        if (hasStation) {
+            dashboard    = delayTrackingService.getDashboardSummaryForStation(filterFrom, filterTo, stationCode);
+            hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
+            destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
+            top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
+            categories   = delayTrackingService.getDelayCategoriesForStation(filterFrom, filterTo, stationCode);
+        } else {
+            dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
+            allStations  = delayTrackingService.getAllStationRanking(filterFrom, filterTo);
+            hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
+            destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
+            top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
+            categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
+        }
+
+        String selectedStationName = null;
+        if (hasStation) {
+            selectedStationName = stations.stream()
+                    .filter(s -> stationCode.equalsIgnoreCase(s.getStationCode()))
+                    .map(Station::getStationDesc)
+                    .findFirst().orElse(stationCode.toUpperCase());
+        }
 
         long catOnTime  = dashboard.getOnTimeTrips();
         long catSmall   = categories.getOrDefault(DelayCategory.SMALL_DELAY.getDisplayLabel(),   0L);
@@ -144,18 +171,20 @@ public class TrainController {
         long catBig     = categories.getOrDefault(DelayCategory.BIG_DELAY.getDisplayLabel(),     0L);
         long catExtreme = categories.getOrDefault(DelayCategory.EXTREME_DELAY.getDisplayLabel(), 0L);
 
-        model.addAttribute("dashboard",    dashboard);
-        model.addAttribute("allStations",  allStations);
-        model.addAttribute("hourly",       hourly);
-        model.addAttribute("destinations", destinations);
-        model.addAttribute("top10Delays",  top10);
-        model.addAttribute("stations",     stations);
-        model.addAttribute("selectedCode", "OVERVIEW");
-        model.addAttribute("catOnTime",    catOnTime);
-        model.addAttribute("catSmall",     catSmall);
-        model.addAttribute("catMedium",    catMedium);
-        model.addAttribute("catBig",       catBig);
-        model.addAttribute("catExtreme",   catExtreme);
+        model.addAttribute("dashboard",            dashboard);
+        model.addAttribute("allStations",          allStations);
+        model.addAttribute("hourly",               hourly);
+        model.addAttribute("destinations",         destinations);
+        model.addAttribute("top10Delays",          top10);
+        model.addAttribute("stations",             stations);
+        model.addAttribute("selectedCode",         hasStation ? stationCode.toUpperCase() : "OVERVIEW");
+        model.addAttribute("hasStationFilter",     hasStation);
+        model.addAttribute("selectedStationName",  selectedStationName);
+        model.addAttribute("catOnTime",            catOnTime);
+        model.addAttribute("catSmall",             catSmall);
+        model.addAttribute("catMedium",            catMedium);
+        model.addAttribute("catBig",               catBig);
+        model.addAttribute("catExtreme",           catExtreme);
 
         model.addAttribute("hourlyLabels",
                 hourly.stream().map(HourlyStats::getHourLabel).collect(Collectors.toList()));
@@ -174,7 +203,7 @@ public class TrainController {
         model.addAttribute("categoryColors",    buildCategoryColors());
         model.addAttribute("delayedThreshold",  DelayCategory.delayedThreshold());
 
-        addFilterMeta(model, filterFrom, filterTo, "OVERVIEW");
+        addFilterMeta(model, filterFrom, filterTo, hasStation ? stationCode : "OVERVIEW");
 
         return "overview";
     }
@@ -217,15 +246,16 @@ public class TrainController {
     public ResponseEntity<Map<String, Object>> getAnalyticsSummary(
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
-        return ResponseEntity.ok(buildAnalyticsPayload(from, to, false));
+        return ResponseEntity.ok(buildAnalyticsPayload(from, to, null));
     }
 
     @GetMapping("/api/analytics/overview")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> getAnalyticsOverview(
             @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
-        return ResponseEntity.ok(buildAnalyticsPayload(from, to, true));
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String stationCode) {
+        return ResponseEntity.ok(buildAnalyticsPayload(from, to, stationCode));
     }
 
     @GetMapping("/")
@@ -235,18 +265,34 @@ public class TrainController {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private Map<String, Object> buildAnalyticsPayload(String from, String to, boolean allStations) {
+    private Map<String, Object> buildAnalyticsPayload(String from, String to, String stationCode) {
         LocalDate filterFrom = parseDate(from);
         LocalDate filterTo   = parseDate(to);
+        boolean   hasStation = stationCode != null && !stationCode.isBlank()
+                               && !"OVERVIEW".equalsIgnoreCase(stationCode);
 
-        DashboardSummary       dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
-        List<StationStats>     stationRank  = allStations
-                ? delayTrackingService.getAllStationRanking(filterFrom, filterTo)
-                : delayTrackingService.getStationRanking(filterFrom, filterTo);
-        List<HourlyStats>      hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
-        List<TripDelaySummary> top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
-        List<DestinationStats> destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
-        Map<String, Long>      categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
+        DashboardSummary       dashboard;
+        List<StationStats>     stationRank;
+        List<HourlyStats>      hourly;
+        List<TripDelaySummary> top10;
+        List<DestinationStats> destinations;
+        Map<String, Long>      categories;
+
+        if (hasStation) {
+            dashboard    = delayTrackingService.getDashboardSummaryForStation(filterFrom, filterTo, stationCode);
+            stationRank  = Collections.emptyList();
+            hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
+            top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
+            destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
+            categories   = delayTrackingService.getDelayCategoriesForStation(filterFrom, filterTo, stationCode);
+        } else {
+            dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
+            stationRank  = delayTrackingService.getAllStationRanking(filterFrom, filterTo);
+            hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
+            top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
+            destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
+            categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
+        }
 
         long maxCatCount = categories.values().stream().mapToLong(Long::longValue).max().orElse(1L);
         long catOnTime   = dashboard.getOnTimeTrips();

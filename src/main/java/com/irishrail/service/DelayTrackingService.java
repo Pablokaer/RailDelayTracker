@@ -150,6 +150,71 @@ public class DelayTrackingService {
         return result;
     }
 
+    // ── station-filtered analytics ────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public DashboardSummary getDashboardSummaryForStation(LocalDate from, LocalDate to, String stationCode) {
+        LocalDateTime f = resolveFrom(from);
+        LocalDateTime t = resolveTo(to);
+        long total   = repository.countByPeriodAndStation(f, t, stationCode);
+        long unique  = total > 0 ? repository.countUniqueTripsForStation(f, t, stationCode)                        : 0L;
+        long delayed = total > 0 ? repository.countDelayedUniqueTripsForStation(f, t, stationCode, DELAYED_MIN)    : 0L;
+        Double avg   = total > 0 ? repository.findAvgPeakDelayForStation(f, t, stationCode, DELAYED_MIN)           : null;
+        Integer max  = total > 0 ? repository.findMaxDelayForStation(f, t, stationCode)                            : null;
+        return new DashboardSummary(total, unique, delayed, avg != null ? avg : 0.0, max != null ? max : 0);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HourlyStats> getHourlyStatsForStation(LocalDate from, LocalDate to, String stationCode) {
+        return repository.findHourlyStatsForStation(resolveFrom(from), resolveTo(to), stationCode).stream()
+                .map(r -> new HourlyStats(
+                        ((Number) r[0]).intValue(),
+                        ((Number) r[1]).longValue(),
+                        ((Number) r[2]).longValue(),
+                        ((Number) r[3]).doubleValue()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<TripDelaySummary> getTop10LargestDelaysForStation(LocalDate from, LocalDate to, String stationCode) {
+        return repository.findTop10TripsByPeakDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
+                .map(r -> new TripDelaySummary(
+                        (String) r[0], (String) r[1], (String) r[2], (String) r[3],
+                        (String) r[4], (String) r[5], (String) r[6], (String) r[7],
+                        ((Number) r[8]).intValue(), ((Number) r[9]).longValue()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<DestinationStats> getTopDestinationsByDelayForStation(LocalDate from, LocalDate to, String stationCode) {
+        return repository.findTopDestinationsByAvgDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
+                .map(r -> new DestinationStats(
+                        (String) r[0],
+                        ((Number) r[1]).longValue(),
+                        ((Number) r[2]).longValue(),
+                        ((Number) r[3]).doubleValue()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Long> getDelayCategoriesForStation(LocalDate from, LocalDate to, String stationCode) {
+        List<Object> peaks = repository.findAllPeakDelaysAboveThresholdForStation(
+                resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN);
+        Map<String, Long> dist = new LinkedHashMap<>();
+        for (DelayCategory cat : DelayCategory.values()) {
+            if (cat.isDelayed()) dist.put(cat.getDisplayLabel(), 0L);
+        }
+        for (Object o : peaks) {
+            if (o == null) continue;
+            DelayCategory cat = DelayCategory.of(((Number) o).intValue());
+            if (cat.isDelayed()) dist.merge(cat.getDisplayLabel(), 1L, Long::sum);
+        }
+        return dist;
+    }
+
     // ── legacy REST API ───────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)

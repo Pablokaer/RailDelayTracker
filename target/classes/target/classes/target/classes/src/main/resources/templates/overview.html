@@ -90,26 +90,18 @@
         <div class="d-flex align-items-center gap-3">
             <div class="ir-logo"><i class="bi bi-train-front text-white"></i></div>
             <div>
-                <div class="fw-bold fs-5 lh-1"
-                     th:text="${hasStationFilter} ? 'Overview — ' + ${selectedStationName} : 'Overview — All Stations'">
-                    Overview
-                </div>
+                <div class="fw-bold fs-5 lh-1">Overview — All Stations</div>
                 <div style="font-size:.8rem;color:var(--text-muted)">Irish Rail · Network Analytics</div>
             </div>
             <div class="ms-3">
                 <select class="station-select" onchange="changeStation(this.value)">
-                    <option value="OVERVIEW" th:selected="${!hasStationFilter}">Overview — All Stations</option>
-                    <option th:each="s : ${stations}"
-                            th:value="${s.stationCode}"
-                            th:text="${s.stationDesc}"
-                            th:selected="${s.stationCode == selectedCode}"></option>
+                    <option value="OVERVIEW" selected>Overview — All Stations</option>
+                    <option th:each="s : ${stations}" th:value="${s.stationCode}"
+                            th:text="${s.stationDesc}"></option>
                 </select>
             </div>
             <div class="ms-auto">
-                <span class="overview-badge">
-                    <i class="bi bi-bar-chart-line me-1"></i>
-                    <span th:text="${hasStationFilter} ? 'Station Overview' : 'Network Overview'">Network Overview</span>
-                </span>
+                <span class="overview-badge"><i class="bi bi-bar-chart-line me-1"></i>Network Overview</span>
             </div>
         </div>
     </div>
@@ -123,27 +115,26 @@
         <i class="bi bi-funnel me-1"></i>Period
     </span>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode : '/overview'}"
+    <a th:href="@{/overview}"
        class="period-btn" th:classappend="${!hasFilter} ? ' active' : ''">All time</a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + today + '&to=' + today : '/overview?from=' + today + '&to=' + today}"
+    <a th:href="@{/overview(from=${today},to=${today})}"
        class="period-btn"
        th:classappend="${filterFrom == today and filterTo == today} ? ' active' : ''">Today</a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + yesterday + '&to=' + yesterday : '/overview?from=' + yesterday + '&to=' + yesterday}"
+    <a th:href="@{/overview(from=${yesterday},to=${yesterday})}"
        class="period-btn"
        th:classappend="${filterFrom == yesterday and filterTo == yesterday} ? ' active' : ''">Yesterday</a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last7from + '&to=' + today : '/overview?from=' + last7from + '&to=' + today}"
+    <a th:href="@{/overview(from=${last7from},to=${today})}"
        class="period-btn"
        th:classappend="${filterFrom == last7from and filterTo == today} ? ' active' : ''">Last 7 days</a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last30from + '&to=' + today : '/overview?from=' + last30from + '&to=' + today}"
+    <a th:href="@{/overview(from=${last30from},to=${today})}"
        class="period-btn"
        th:classappend="${filterFrom == last30from and filterTo == today} ? ' active' : ''">Last 30 days</a>
 
     <form method="get" th:action="@{/overview}" class="d-flex align-items-center gap-2 ms-auto flex-wrap">
-        <input th:if="${hasStationFilter}" type="hidden" name="stationCode" th:value="${selectedCode}">
         <input type="date" name="from" class="date-input" th:value="${filterFrom}">
         <span style="color:var(--text-muted);font-size:.8rem">→</span>
         <input type="date" name="to"   class="date-input" th:value="${filterTo}">
@@ -174,10 +165,7 @@
 <!-- ══════════════════════════════════════════
      SECTION 1 — SUMMARY CARDS
 ══════════════════════════════════════════ -->
-<div class="section-header">
-    <i class="bi bi-speedometer2"></i>
-    <span th:text="${hasStationFilter} ? 'Station Summary — ' + ${selectedStationName} : 'Network Summary'">Network Summary</span>
-</div>
+<div class="section-header"><i class="bi bi-speedometer2"></i> Network Summary</div>
 <div class="row g-3 mb-5">
     <div class="col-6 col-md-4 col-xl">
         <div class="a-stat-card">
@@ -326,14 +314,8 @@ const _CAT_DATA    = /*[[${delayCategoryData}]]*/ [];
 <script>
 /* ── Station navigation ──────────────────────────────────────────────── */
 function changeStation(code) {
-    const p = new URLSearchParams(window.location.search);
-    p.delete('stationCode');
-    if (code === 'OVERVIEW') {
-        window.location.href = '/overview' + (p.toString() ? '?' + p : '');
-    } else {
-        p.set('stationCode', code);
-        window.location.href = '/overview?' + p;
-    }
+    if (code === 'OVERVIEW') window.location.href = '/overview';
+    else window.location.href = '/get?stationCode=' + code;
 }
 
 /* ── Station search ──────────────────────────────────────────────────── */
@@ -560,7 +542,6 @@ setInterval(refreshOverview, 60_000);
 <!-- ══════════════════════════════════════════
      SECTION 2 — FULL STATION RANKING
 ══════════════════════════════════════════ -->
-<div th:if="${!hasStationFilter}">
 <div class="section-header">
     <i class="bi bi-trophy"></i> Station Ranking — All Stations
     <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem">
@@ -629,7 +610,6 @@ setInterval(refreshOverview, 60_000);
         </table>
     </div>
 </div>
-</div><!-- /th:if !hasStationFilter -->
 
 </body>
 </html>

@@ -20,7 +20,10 @@
       "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records; SELECT 'Tabela limpa.' AS status;\")",
       "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Recurse -File -Include \"*.java\", \"*.py\", \"*.js\", \"*.ts\")",
       "Bash(Select-Object -First 20)",
-      "Bash(Format-Table FullName)"
+      "Bash(Format-Table FullName)",
+      "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(mvn compile *)"
     ]
   }
 }
