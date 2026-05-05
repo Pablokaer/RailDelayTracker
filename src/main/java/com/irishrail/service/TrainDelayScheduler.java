@@ -2,12 +2,14 @@ package com.irishrail.service;
 
 import com.irishrail.model.Station;
 import com.irishrail.model.TrainInfo;
-import com.irishrail.repository.TrainDelayRepository;
+import com.irishrail.repository.TripRepository;
+import com.irishrail.repository.TripStationSnapshotRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -20,9 +22,10 @@ public class TrainDelayScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TrainDelayScheduler.class);
 
-    private final IrishRailService     irishRailService;
-    private final DelayTrackingService delayTrackingService;
-    private final TrainDelayRepository repository;
+    private final IrishRailService              irishRailService;
+    private final DelayTrackingService          delayTrackingService;
+    private final TripStationSnapshotRepository snapshotRepository;
+    private final TripRepository                tripRepository;
 
     @Value("${irishrail.retention.days:90}")
     private int retentionDays;
@@ -31,11 +34,13 @@ public class TrainDelayScheduler {
     private final ConcurrentHashMap<String, Integer> lastSeen = new ConcurrentHashMap<>();
 
     public TrainDelayScheduler(IrishRailService irishRailService,
-                                DelayTrackingService delayTrackingService,
-                                TrainDelayRepository repository) {
+                               DelayTrackingService delayTrackingService,
+                               TripStationSnapshotRepository snapshotRepository,
+                               TripRepository tripRepository) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
-        this.repository           = repository;
+        this.snapshotRepository   = snapshotRepository;
+        this.tripRepository       = tripRepository;
     }
 
     // ── collector: every 30 s during DART operating hours (06:00–00:30) ───────
@@ -67,13 +72,15 @@ public class TrainDelayScheduler {
 
     // ── cleanup: every day at 03:00 ──────────────────────────────────────────
 
+    @Transactional
     @Scheduled(cron = "0 0 3 * * *")
     public void cleanup() {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
-        int deleted = repository.deleteOlderThan(cutoff);
+        int snapshots = snapshotRepository.deleteByCapturedAtBefore(cutoff);
+        int trips     = tripRepository.deleteOrphans();
         lastSeen.clear();
-        log.info("Cleanup: {} records deleted (older than {}), state map cleared",
-                deleted, cutoff.toLocalDate());
+        log.info("Cleanup: {} snapshots and {} orphan trips deleted (older than {}), state map cleared",
+                snapshots, trips, cutoff.toLocalDate());
     }
 
     // ── DART hours check (06:00–00:30, spans midnight) ───────────────────────

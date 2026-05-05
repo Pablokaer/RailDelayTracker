@@ -23,7 +23,12 @@
       "Bash(Format-Table FullName)",
       "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Force)",
       "Bash(Select-Object Name, FullName)",
-      "Bash(mvn compile *)"
+      "Bash(mvn compile *)",
+      "Bash(cd /d \"D:\\\\programação\\\\RailDelayTracker\")",
+      "Bash(Get-ChildItem -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(mvn compile *)",
+      "PowerShell(Get-ChildItem *)"
     ]
   }
 }

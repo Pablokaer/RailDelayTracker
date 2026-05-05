@@ -231,7 +231,7 @@ public class TrainController {
 
     @GetMapping("/api/analytics/recent")
     @ResponseBody
-    public ResponseEntity<List<TrainDelayRecord>> getRecentSnapshots() {
+    public ResponseEntity<List<TripStationSnapshot>> getRecentSnapshots() {
         return ResponseEntity.ok(delayTrackingService.getRecentDelays());
     }
 
