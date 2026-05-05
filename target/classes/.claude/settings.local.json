@@ -17,7 +17,10 @@
       "PowerShell(Stop-Process *)",
       "Bash(PGPASSWORD=postgres psql *)",
       "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records WHERE captured_at >= CURRENT_DATE AND captured_at < CURRENT_DATE + INTERVAL '17 hours';\")",
-      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records; SELECT 'Tabela limpa.' AS status;\")"
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records; SELECT 'Tabela limpa.' AS status;\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Recurse -File -Include \"*.java\", \"*.py\", \"*.js\", \"*.ts\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(Format-Table FullName)"
     ]
   }
 }
