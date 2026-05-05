@@ -224,7 +224,7 @@ public class TrainController {
 
     @GetMapping("/")
     public String home() {
-        return "redirect:/get";
+        return "redirect:/overview?from=" + LocalDate.now() + "&to=" + LocalDate.now();
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

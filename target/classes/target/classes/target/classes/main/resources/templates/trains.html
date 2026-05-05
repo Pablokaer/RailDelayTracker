@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="'Irish Rail — ' + ${stationName}">Irish Rail — Station</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --ir-green: #009A44;
+            --bg-main:  #0b0f14;
+            --bg-card:  #111820;
+            --bg-row:   #141c26;
+            --bg-row-alt: #0f1620;
+            --border:   #1e2d3d;
+            --text-primary: #e8f0f8;
+            --text-muted:   #5d7a99;
+            --red:   #e03434;
+            --amber: #f59e0b;
+            --blue:  #3b82f6;
+        }
+
+        * { box-sizing: border-box; }
+        body { background: var(--bg-main); color: var(--text-primary); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+        /* Header */
+        .site-header { background: linear-gradient(180deg,#0a1a0f,#0b1a12); border-bottom: 2px solid var(--ir-green); padding: 1rem 0; }
+        .ir-logo { width:44px; height:44px; background:var(--ir-green); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0; }
+        .live-pill { display:inline-flex; align-items:center; gap:6px; background:rgba(0,154,68,.15); border:1px solid rgba(0,154,68,.4); color:#3ecf73; border-radius:20px; padding:3px 12px; font-size:.78rem; font-weight:600; letter-spacing:.04em; }
+        .live-dot { width:7px; height:7px; background:#3ecf73; border-radius:50%; animation:pulse 1.6s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+        /* Tab nav */
+        .tab-nav { background:#0d1822; border-bottom:1px solid var(--border); padding:0 1.5rem; display:flex; }
+        .tab-nav-btn { background:none; border:none; color:var(--text-muted); padding:.75rem 1.25rem; font-size:.85rem; font-weight:500; cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; display:flex; align-items:center; gap:6px; }
+        .tab-nav-btn:hover { color:var(--text-primary); }
+        .tab-nav-btn.active { color:var(--ir-green); border-bottom-color:var(--ir-green); }
+
+        /* Stat cards */
+        .stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.9rem 1.2rem; }
+        .stat-value { font-size:2rem; font-weight:700; line-height:1; }
+        .stat-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin-top:3px; }
+
+        /* Filter */
+        .filter-bar { display:flex; gap:8px; flex-wrap:wrap; }
+        .filter-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:20px; padding:5px 16px; font-size:.82rem; cursor:pointer; transition:all .15s; }
+        .filter-btn:hover { border-color:var(--ir-green); color:var(--text-primary); }
+        .filter-btn.active { background:var(--ir-green); border-color:var(--ir-green); color:#fff; }
+
+        /* Table / board */
+        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+        table { width:100%; border-collapse:collapse; }
+        thead th { background:#0d1822; color:var(--text-muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; white-space:nowrap; border-bottom:1px solid var(--border); }
+        tbody tr { border-bottom:1px solid var(--border); transition:background .12s; }
+        tbody tr:nth-child(even) { background:var(--bg-row-alt); }
+        tbody tr:nth-child(odd)  { background:var(--bg-row); }
+        tbody tr:hover { background:#192436; }
+        tbody tr:last-child { border-bottom:none; }
+        td { padding:.7rem 1rem; font-size:.88rem; vertical-align:middle; }
+
+        /* Chips & badges */
+        .train-chip { display:inline-block; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); color:#3ecf73; border-radius:5px; padding:2px 8px; font-size:.8rem; font-weight:700; font-family:monospace; }
+        .badge-ontime { background:rgba(59,130,246,.18); color:#60a5fa; border:1px solid rgba(59,130,246,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
+        .badge-late   { background:rgba(224,52,52,.18);  color:#f87171; border:1px solid rgba(224,52,52,.3);  border-radius:5px; padding:2px 8px; font-size:.75rem; }
+        .badge-status { background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:5px; padding:2px 8px; font-size:.75rem; color:var(--text-muted); }
+
+        /* Directions */
+        .dir-north { color:#60a5fa; }
+        .dir-south { color:#c084fc; }
+        .loc-origin { color:#3ecf73; font-size:.72rem; }
+        .loc-dest   { color:#f87171; font-size:.72rem; }
+        .loc-stop   { color:var(--text-muted); font-size:.72rem; }
+        .due-now   { color:#3ecf73; font-weight:700; }
+        .due-soon  { color:#f59e0b; font-weight:600; }
+        .due-later { color:var(--text-muted); }
+
+        /* Refresh bar */
+        .refresh-progress { height:2px; background:var(--ir-green); width:100%; transform-origin:left; animation:shrink 30s linear forwards; }
+        @keyframes shrink { from{transform:scaleX(1)} to{transform:scaleX(0)} }
+
+        /* Station selector */
+        .station-select { background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; padding:6px 14px; font-size:.85rem; cursor:pointer; outline:none; transition:border-color .15s; }
+        .station-select:focus,.station-select:hover { border-color:var(--ir-green); }
+        .station-select option { background:#111820; }
+
+        /* Tooltip */
+        [data-tooltip] { position:relative; cursor:default; }
+        [data-tooltip]:hover::after { content:attr(data-tooltip); position:absolute; bottom:130%; left:50%; transform:translateX(-50%); background:#1e2d3d; border:1px solid var(--border); color:var(--text-primary); font-size:.75rem; padding:4px 10px; border-radius:6px; white-space:nowrap; z-index:99; }
+
+        .table-scroll { overflow-x:auto; }
+        .empty-state { text-align:center; padding:5rem 2rem; color:var(--text-muted); }
+        .empty-state i { font-size:4rem; opacity:.25; }
+        .spin { animation:spin .6s linear infinite; }
+        @keyframes spin { to{transform:rotate(360deg)} }
+
+        /* ── Analytics styles ─────────────────────────────────────────────── */
+        .section-header {
+            display: flex; align-items: center; gap: 10px;
+            font-size: .68rem; text-transform: uppercase; letter-spacing: .12em;
+            font-weight: 700; color: var(--ir-green);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: .6rem; margin-bottom: 1.1rem;
+        }
+        .section-header i { font-size: .9rem; }
+
+        .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; }
+
+        .a-stat-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 10px; padding: 1.1rem 1.3rem;
+        }
+        .a-stat-val { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+        .a-stat-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-top: 4px; }
+
+        /* Delay probability bar */
+        .prob-track { height: 14px; background: #0d1822; border-radius: 7px; overflow: hidden; }
+        .prob-fill  { height: 100%; border-radius: 7px; transition: width .5s ease; }
+
+        /* Station rank bar */
+        .rank-bar-track { width: 72px; height: 6px; background: #1e2d3d; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+        .rank-bar-fill  { height: 100%; border-radius: 3px; }
+
+        /* Category bars */
+        .cat-track { flex: 1; height: 26px; background: #0d1822; border-radius: 5px; overflow: hidden; }
+        .cat-fill  { height: 100%; border-radius: 5px; display: flex; align-items: center; padding: 0 8px; font-size: .75rem; font-weight: 600; color: #fff; white-space: nowrap; min-width: 2px; transition: width .5s ease; }
+
+        /* Analytics empty state */
+        .analytics-empty-full { text-align: center; padding: 5rem 2rem; }
+        .analytics-empty-full i { font-size: 3.5rem; opacity: .15; }
+
+        /* Date filter bar */
+        .filter-period-bar { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.65rem 1rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+        .date-input { background:#0d1822; border:1px solid var(--border); color:var(--text-primary); border-radius:7px; padding:5px 10px; font-size:.82rem; outline:none; transition:border-color .15s; cursor:pointer; }
+        .date-input:focus { border-color:var(--ir-green); }
+        .date-input::-webkit-calendar-picker-indicator { filter:invert(.6); cursor:pointer; }
+        .period-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:20px; padding:4px 14px; font-size:.78rem; cursor:pointer; text-decoration:none; transition:all .15s; white-space:nowrap; }
+        .period-btn:hover { border-color:var(--ir-green); color:var(--text-primary); }
+        .period-btn.active { background:rgba(0,154,68,.15); border-color:var(--ir-green); color:#3ecf73; }
+        .active-period-label { font-size:.75rem; color:#3ecf73; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); border-radius:20px; padding:3px 10px; white-space:nowrap; }
+    </style>
+</head>
+<body>
+
+<!-- ═══════ HEADER ═══════ -->
+<header class="site-header">
+    <div class="container-fluid px-4">
+        <div class="d-flex align-items-center gap-3">
+            <div class="ir-logo"><i class="bi bi-train-front text-white"></i></div>
+            <div>
+                <div class="fw-bold fs-5 lh-1" th:text="${stationName}">Station</div>
+                <div style="font-size:.8rem;color:var(--text-muted)">Irish Rail · Real-Time Board</div>
+            </div>
+            <div class="ms-3">
+                <select class="station-select" id="station-selector" onchange="changeStation(this.value)">
+                    <option value="OVERVIEW">Overview — All Stations</option>
+                    <option th:each="s : ${stations}" th:value="${s.stationCode}"
+                            th:text="${s.stationDesc}" th:selected="${s.stationCode == selectedCode}"></option>
+                </select>
+            </div>
+            <div class="ms-auto d-flex flex-column align-items-end gap-1">
+                <div class="live-pill"><span class="live-dot"></span>LIVE</div>
+                <div style="font-size:.75rem;color:var(--text-muted)">
+                    Updated <span id="clock" th:text="${updatedAt}">--:--:--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- ═══════ TAB NAV ═══════ -->
+<nav class="tab-nav">
+    <button class="tab-nav-btn active" data-tab="live" onclick="showTab('live')">
+        <i class="bi bi-display"></i> Live Board
+    </button>
+    <button class="tab-nav-btn" data-tab="analytics" onclick="showTab('analytics')">
+        <i class="bi bi-bar-chart-line"></i> Analytics
+    </button>
+</nav>
+
+<!-- ═══════ MAIN ═══════ -->
+<main class="container-fluid px-4 py-4">
+
+<!-- ═══════════════════════════════════════════
+     LIVE BOARD TAB
+═══════════════════════════════════════════ -->
+<div id="tab-live">
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" th:text="${totalTrains}">0</div>
+                <div class="stat-label"><i class="bi bi-train-front me-1"></i>Total trains</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card" style="border-color:rgba(63,207,115,.3)">
+                <div class="stat-value" style="color:#3ecf73" th:text="${onTimeCount}">0</div>
+                <div class="stat-label"><i class="bi bi-check-circle me-1"></i>On time</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card" style="border-color:rgba(224,52,52,.3)">
+                <div class="stat-value" style="color:#f87171" th:text="${delayedCount}">0</div>
+                <div class="stat-label"><i class="bi bi-exclamation-triangle me-1"></i>Delayed</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-value" id="countdown-stat">30</div>
+                <div class="stat-label"><i class="bi bi-arrow-clockwise me-1"></i>Refresh in (s)</div>
+            </div>
+        </div>
+    </div>
+
+    <div style="height:2px;background:var(--border);border-radius:2px;margin-bottom:1.5rem;">
+        <div class="refresh-progress" id="refresh-bar"></div>
+    </div>
+
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+        <div class="filter-bar" id="filter-bar">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="north"><i class="bi bi-arrow-up me-1"></i>Northbound</button>
+            <button class="filter-btn" data-filter="south"><i class="bi bi-arrow-down me-1"></i>Southbound</button>
+            <button class="filter-btn" data-filter="delayed"><i class="bi bi-exclamation-circle me-1"></i>Delayed only</button>
+        </div>
+        <button class="filter-btn" id="refresh-btn" onclick="fetchTrains()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh now
+        </button>
+    </div>
+
+    <div class="board-wrap">
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Train</th><th>Type</th><th>Origin</th><th>Destination</th>
+                        <th>Direction</th><th>Sch. Dep</th><th>Exp. Dep</th>
+                        <th>Sch. Arr</th><th>Exp. Arr</th><th>Due in</th>
+                        <th>Status</th><th>Delay</th><th>Last seen</th><th>Stop type</th>
+                    </tr>
+                </thead>
+                <tbody id="train-tbody">
+                    <tr th:if="${trains.isEmpty()}">
+                        <td colspan="14">
+                            <div class="empty-state">
+                                <i class="bi bi-train-front-fill d-block mb-3"></i>
+                                <div class="fw-semibold mb-1">No trains found</div>
+                                <small>No services scheduled, or API unavailable.</small>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr th:each="t : ${trains}" th:attr="data-dir=${t.direction},data-late=${t.late}">
+                        <td><span class="train-chip" th:text="${t.trainCode}"></span></td>
+                        <td style="color:var(--text-muted);font-size:.78rem" th:text="${t.trainType}"></td>
+                        <td th:text="${t.origin}"></td>
+                        <td th:text="${t.destination}"></td>
+                        <td>
+                            <span th:if="${t.direction == 'Northbound'}" class="dir-north"><i class="bi bi-arrow-up-short"></i>N</span>
+                            <span th:if="${t.direction == 'Southbound'}" class="dir-south"><i class="bi bi-arrow-down-short"></i>S</span>
+                            <span th:if="${t.direction != 'Northbound' and t.direction != 'Southbound'}" style="color:var(--text-muted);font-size:.8rem" th:text="${t.direction}"></span>
+                        </td>
+                        <td th:text="${t.schDepart}"></td>
+                        <td th:text="${t.expDepart}"></td>
+                        <td th:text="${t.schArrival}"></td>
+                        <td th:text="${t.expArrival}"></td>
+                        <td>
+                            <span th:if="${t.dueIn == 0}" class="due-now">Now</span>
+                            <span th:if="${t.dueIn > 0 and t.dueIn <= 5}" class="due-soon" th:text="${t.dueIn + ' min'}"></span>
+                            <span th:if="${t.dueIn > 5}" class="due-later" th:text="${t.dueIn + ' min'}"></span>
+                        </td>
+                        <td><span class="badge-status" th:text="${t.status}"></span></td>
+                        <td>
+                            <span th:style="|background:${t.delayCategory.bgColor};color:${t.delayCategory.textColor};border:1px solid ${t.delayCategory.borderColor};border-radius:5px;padding:2px 8px;font-size:.75rem;white-space:nowrap|"
+                                  th:text="${t.delayCategory.isOnTime() ? 'On time' : ('+' + t.late + ' min')}"></span>
+                        </td>
+                        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                            <span th:if="${t.lastLocation != null and !t.lastLocation.isEmpty()}"
+                                  th:text="${t.lastLocation}" th:attr="data-tooltip=${t.lastLocation}"
+                                  style="color:var(--text-muted);font-size:.8rem"></span>
+                            <span th:if="${t.lastLocation == null or t.lastLocation.isEmpty()}" style="color:var(--border)">—</span>
+                        </td>
+                        <td>
+                            <span th:if="${t.locationType == 'O'}" class="loc-origin">Origin</span>
+                            <span th:if="${t.locationType == 'D'}" class="loc-dest">Destination</span>
+                            <span th:if="${t.locationType == 'S'}" class="loc-stop">Stop</span>
+                            <span th:if="${t.locationType != 'O' and t.locationType != 'D' and t.locationType != 'S'}"
+                                  style="color:var(--text-muted);font-size:.78rem" th:text="${t.locationType}"></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-between align-items-center" style="color:var(--text-muted);font-size:.75rem">
+        <span>Station: <strong style="color:var(--text-primary)" th:text="${stationName}">—</strong>
+        · Code: <strong style="color:var(--text-primary)" th:text="${selectedCode}">—</strong>
+        · Irish Rail Real-Time API</span>
+        <span id="row-count"></span>
+    </div>
+</div><!-- /tab-live -->
+
+
+<!-- ═══════════════════════════════════════════
+     ANALYTICS TAB
+═══════════════════════════════════════════ -->
+<div id="tab-analytics" style="display:none">
+
+    <!-- ─── date filter bar ─── -->
+    <div class="filter-period-bar">
+        <span style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);white-space:nowrap">
+            <i class="bi bi-funnel me-1"></i>Period
+        </span>
+
+        <!-- quick buttons -->
+        <a th:href="@{/get(stationCode=${selectedCode})}"
+           class="period-btn" th:classappend="${!hasFilter} ? ' active' : ''">All time</a>
+
+        <a th:href="@{/get(stationCode=${selectedCode},from=${today},to=${today})}"
+           class="period-btn"
+           th:classappend="${filterFrom == today and filterTo == today} ? ' active' : ''">Today</a>
+
+        <a th:href="@{/get(stationCode=${selectedCode},from=${yesterday},to=${yesterday})}"
+           class="period-btn"
+           th:classappend="${filterFrom == yesterday and filterTo == yesterday} ? ' active' : ''">Yesterday</a>
+
+        <a th:href="@{/get(stationCode=${selectedCode},from=${last7from},to=${today})}"
+           class="period-btn"
+           th:classappend="${filterFrom == last7from and filterTo == today} ? ' active' : ''">Last 7 days</a>
+
+        <a th:href="@{/get(stationCode=${selectedCode},from=${last30from},to=${today})}"
+           class="period-btn"
+           th:classappend="${filterFrom == last30from and filterTo == today} ? ' active' : ''">Last 30 days</a>
+
+        <!-- custom range -->
+        <form method="get" th:action="@{/get}" class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+            <input type="hidden" name="stationCode" th:value="${selectedCode}">
+            <input type="date" name="from" class="date-input" th:value="${filterFrom}">
+            <span style="color:var(--text-muted);font-size:.8rem">→</span>
+            <input type="date" name="to"   class="date-input" th:value="${filterTo}">
+            <button type="submit" class="period-btn" style="background:rgba(0,154,68,.1);border-color:rgba(0,154,68,.4);color:#3ecf73">
+                <i class="bi bi-check2 me-1"></i>Apply
+            </button>
+        </form>
+
+        <!-- auto-refresh badge -->
+        <span id="a-refreshed-at" style="font-size:.72rem;color:var(--text-muted);white-space:nowrap;display:none">
+            <i class="bi bi-arrow-repeat me-1" style="color:var(--ir-green)"></i><span id="a-refreshed-time"></span>
+        </span>
+
+        <!-- active period label -->
+        <span th:if="${hasFilter}" class="active-period-label">
+            <i class="bi bi-calendar3 me-1"></i>
+            <span th:if="${filterFrom == filterTo}" th:text="${filterFrom}">—</span>
+            <span th:if="${filterFrom != filterTo}"
+                  th:text="${filterFrom + ' → ' + filterTo}">—</span>
+        </span>
+    </div>
+
+    <!-- ─── empty state when DB has no data ─── -->
+    <div th:if="${dashboard.totalSnapshots == 0}" class="analytics-empty-full">
+        <i class="bi bi-database d-block mb-3"></i>
+        <div class="fw-semibold mb-1" style="font-size:1.1rem">No data yet</div>
+        <div style="color:var(--text-muted);max-width:420px;margin:0 auto">
+            Browse stations in the Live Board tab to start collecting data.
+            Analytics populate automatically on each refresh.
+        </div>
+    </div>
+
+    <div th:unless="${dashboard.totalSnapshots == 0}">
+
+    <!-- ══════════════════════════════════
+         SECTION 1 — DASHBOARD SUMMARY
+    ══════════════════════════════════ -->
+    <div class="section-header">
+        <i class="bi bi-speedometer2"></i> Dashboard Summary
+    </div>
+    <div class="row g-3 mb-5">
+        <div class="col-6 col-md-4 col-xl">
+            <div class="a-stat-card">
+                <div id="a-total-snaps" class="a-stat-val" th:text="${dashboard.totalSnapshots}">0</div>
+                <div class="a-stat-lbl"><i class="bi bi-database me-1"></i>Total Snapshots</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+            <div class="a-stat-card" style="border-color:rgba(245,158,11,.3)">
+                <div id="a-avg-delay" class="a-stat-val" style="color:#f59e0b"
+                     th:text="${dashboard.averageDelay + ' min'}">0 min</div>
+                <div class="a-stat-lbl"><i class="bi bi-clock me-1"></i>Average Delay</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+            <div id="a-delay-prob-card" class="a-stat-card"
+                 th:style="|border-color: ${dashboard.delayProbabilityColor}44|">
+                <div id="a-delay-prob" class="a-stat-val"
+                     th:style="|color: ${dashboard.delayProbabilityColor}|"
+                     th:text="${dashboard.delayProbability + '%'}">0%</div>
+                <div class="a-stat-lbl"><i class="bi bi-percent me-1"></i>Delay Probability</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+            <div class="a-stat-card" style="border-color:rgba(224,52,52,.3)">
+                <div id="a-max-delay" class="a-stat-val" style="color:#f87171"
+                     th:text="${dashboard.maxDelay + ' min'}">0 min</div>
+                <div class="a-stat-lbl"><i class="bi bi-arrow-up-circle me-1"></i>Max Delay</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+            <div class="a-stat-card" style="border-color:rgba(99,179,237,.25)">
+                <div id="a-unique-trips" class="a-stat-val" style="color:#63b3ed"
+                     th:text="${dashboard.uniqueTrips}">0</div>
+                <div class="a-stat-lbl"><i class="bi bi-train-front me-1"></i>Unique Trips</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         SECTION 2 — DELAY PROBABILITY + ON TIME vs DELAYED
+    ══════════════════════════════════ -->
+    <div class="section-header">
+        <i class="bi bi-pie-chart"></i> Delay Probability &amp; On Time vs Delayed
+    </div>
+    <div class="row g-3 mb-5">
+
+        <!-- Delay probability card -->
+        <div class="col-md-7">
+            <div class="chart-card h-100">
+                <div class="d-flex align-items-start justify-content-between mb-4">
+                    <div>
+                        <div id="prob-hero" style="font-size:3.2rem;font-weight:800;line-height:1"
+                             th:style="|font-size:3.2rem;font-weight:800;line-height:1;color:${dashboard.delayProbabilityColor}|"
+                             th:text="${dashboard.delayProbability + '%'}">0%</div>
+                        <div class="a-stat-lbl mt-1">of all recorded trains were delayed</div>
+                    </div>
+                    <div class="text-end">
+                        <div id="prob-delayed" style="font-size:1rem;font-weight:600;color:#f87171"
+                             th:text="${dashboard.delayedTrips + ' delayed'}">0 delayed</div>
+                        <div id="prob-of-trips" style="font-size:.82rem;color:var(--text-muted)"
+                             th:text="'of ' + ${dashboard.uniqueTrips} + ' trips'">of 0 trips</div>
+                        <div id="prob-ontime" style="font-size:.82rem;color:#3ecf73;margin-top:4px"
+                             th:text="${dashboard.onTimeTrips + ' on time'}">0 on time</div>
+                    </div>
+                </div>
+                <!-- progress bar -->
+                <div class="prob-track mb-1">
+                    <div id="prob-fill" class="prob-fill"
+                         th:style="|width:${dashboard.delayProbability}%;background:${dashboard.delayProbabilityColor}|">
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between" style="font-size:.7rem;color:var(--text-muted)">
+                    <span>0% — No delays</span>
+                    <span>50%</span>
+                    <span>100% — All delayed</span>
+                </div>
+                <!-- threshold legend -->
+                <div class="d-flex gap-3 mt-3" style="font-size:.75rem">
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3ecf73;margin-right:4px"></span>&lt;20% Good</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:4px"></span>20–40% Warning</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f87171;margin-right:4px"></span>&gt;40% Critical</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- On time vs delayed doughnut -->
+        <div class="col-md-5">
+            <div class="chart-card h-100 d-flex flex-column">
+                <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.75rem">
+                    <i class="bi bi-check2-circle me-1" style="color:var(--ir-green)"></i>On Time vs Delayed
+                </div>
+                <div style="flex:1;position:relative;min-height:200px">
+                    <canvas id="chart-ontime"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         SECTION 3 — STATION RANKING
+    ══════════════════════════════════ -->
+    <div class="section-header">
+        <i class="bi bi-trophy"></i> Station Ranking
+        <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem">
+            — ordered by delay count (top 15)
+        </span>
+    </div>
+    <div class="board-wrap mb-5">
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Station</th>
+                        <th>Avg Delay</th>
+                        <th>Delay Probability</th>
+                        <th>Delayed</th>
+                        <th>Total Trips</th>
+                    </tr>
+                </thead>
+                <tbody id="station-rank-tbody">
+                    <tr th:if="${stationRank.isEmpty()}">
+                        <td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No station data yet</td>
+                    </tr>
+                    <tr th:each="s, iter : ${stationRank}">
+                        <td>
+                            <span th:if="${iter.index == 0}" style="font-size:1rem">🥇</span>
+                            <span th:if="${iter.index == 1}" style="font-size:1rem">🥈</span>
+                            <span th:if="${iter.index == 2}" style="font-size:1rem">🥉</span>
+                            <span th:if="${iter.index >= 3}" style="color:var(--text-muted);font-size:.82rem"
+                                  th:text="${iter.index + 1}"></span>
+                        </td>
+                        <td class="fw-semibold" th:text="${s.stationName}">—</td>
+                        <td>
+                            <span th:if="${s.averageDelay > 0}" class="badge-late"
+                                  th:text="${s.averageDelay + ' min'}">—</span>
+                            <span th:if="${s.averageDelay <= 0}" class="badge-ontime">On time</span>
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="rank-bar-track">
+                                    <span class="rank-bar-fill d-block"
+                                          th:style="|width:${s.delayProbability}%;background:${s.delayProbabilityBarColor};height:100%|"></span>
+                                </span>
+                                <span style="font-size:.82rem;min-width:38px"
+                                      th:text="${s.delayProbability + '%'}">0%</span>
+                            </div>
+                        </td>
+                        <td style="color:#f87171" th:text="${s.delayedTrips}">0</td>
+                        <td style="color:var(--text-muted)" th:text="${s.totalTrips}">0</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         SECTION 4 — HOURLY ANALYSIS
+    ══════════════════════════════════ -->
+    <div th:unless="${hourly.isEmpty()}">
+        <div class="section-header">
+            <i class="bi bi-clock-history"></i> Hourly Delay Analysis
+        </div>
+        <div class="chart-card mb-5">
+            <canvas id="chart-hourly" height="90"></canvas>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         SECTION 5 — TOP 10 DELAYS + DESTINATIONS
+    ══════════════════════════════════ -->
+    <div class="section-header">
+        <i class="bi bi-arrow-up-circle"></i> Top 10 Largest Delays
+        <span style="color:var(--text-muted);font-weight:400;text-transform:none;letter-spacing:0;font-size:.75rem">
+            &amp; Destinations with Highest Average Delay
+        </span>
+    </div>
+    <div class="row g-3 mb-5">
+
+        <!-- Top 10 table -->
+        <div class="col-lg-7">
+            <div class="board-wrap h-100">
+                <div class="px-3 py-2" style="border-bottom:1px solid var(--border);font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">
+                    <i class="bi bi-sort-down me-1" style="color:var(--ir-green)"></i>Top 10 Largest Delays
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Train</th>
+                                <th>Station → Destination</th>
+                                <th>Sch. Dep</th>
+                                <th>Sch. Arr</th>
+                                <th>Peak Delay</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top10-tbody">
+                            <tr th:if="${top10Delays.isEmpty()}">
+                                <td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delayed records</td>
+                            </tr>
+                            <tr th:each="r, iter : ${top10Delays}">
+                                <td style="color:var(--text-muted);font-size:.82rem"
+                                    th:text="${iter.index + 1}">1</td>
+                                <td>
+                                    <span class="train-chip" th:text="${r.trainCode}">—</span>
+                                </td>
+                                <td style="font-size:.78rem">
+                                    <span style="color:var(--text-primary)" th:text="${r.stationFullName}">—</span>
+                                    <span th:if="${r.destination != null and !r.destination.isEmpty()}"
+                                          style="color:var(--text-muted)">
+                                        → <span th:text="${r.destination}">—</span>
+                                    </span>
+                                </td>
+                                <td style="color:var(--text-muted);font-size:.78rem"
+                                    th:text="${r.schDepart ?: '—'}">—</td>
+                                <td style="color:var(--text-muted);font-size:.78rem"
+                                    th:text="${(r.schArrival != null and !r.schArrival.isEmpty()) ? r.schArrival : '—'}">—</td>
+                                <td>
+                                    <span class="badge-late fw-bold"
+                                          th:text="${'+' + r.peakDelayMinutes + ' min'}">—</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Destinations chart + table -->
+        <div id="dest-section" class="col-lg-5">
+            <div class="chart-card d-flex flex-column mb-3">
+                <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.75rem">
+                    <i class="bi bi-geo-alt-fill me-1" style="color:var(--ir-green)"></i>
+                    Top 10 Destinations by Avg Delay
+                </div>
+                <div th:if="${destinations.isEmpty()}" class="d-flex align-items-center justify-content-center"
+                     style="color:var(--text-muted);font-size:.85rem;min-height:180px">No destination data yet</div>
+                <div th:unless="${destinations.isEmpty()}" style="position:relative;min-height:220px">
+                    <canvas id="chart-destinations"></canvas>
+                </div>
+            </div>
+            <div th:unless="${destinations.isEmpty()}" class="board-wrap">
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Destination</th>
+                                <th>Avg Delay</th>
+                                <th>Delayed</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dest-table-tbody">
+                            <tr th:each="d : ${destinations}">
+                                <td style="font-size:.82rem" th:text="${d.destination}">—</td>
+                                <td><span class="badge-late" th:text="${d.avgDelay + ' min'}">—</span></td>
+                                <td style="color:#f87171;font-size:.82rem" th:text="${d.delayCount}">0</td>
+                                <td style="color:var(--text-muted);font-size:.82rem" th:text="${d.totalCount}">0</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         SECTION 6 — DELAY CATEGORIES
+    ══════════════════════════════════ -->
+    <div class="section-header">
+        <i class="bi bi-layers"></i> Delay Categories
+    </div>
+    <div class="row g-3 mb-4">
+
+        <!-- Doughnut: On Time / Small / Big -->
+        <div class="col-md-4">
+            <div class="chart-card h-100 d-flex flex-column">
+                <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.75rem">
+                    <i class="bi bi-pie-chart-fill me-1" style="color:var(--ir-green)"></i>
+                    On Time vs Delay Severity
+                </div>
+                <div style="flex:1;position:relative;min-height:200px">
+                    <canvas id="chart-categories"></canvas>
+                </div>
+                <!-- legend -->
+                <div class="d-flex flex-wrap justify-content-center gap-2 mt-3" style="font-size:.72rem">
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3ecf73;margin-right:4px"></span>On Time</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#60a5fa;margin-right:4px"></span>Small</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:4px"></span>Medium</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f97316;margin-right:4px"></span>Big</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f87171;margin-right:4px"></span>Extreme</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bar distribution + breakdown table -->
+        <div class="col-md-8">
+            <div class="chart-card h-100">
+                <div class="row g-0 align-items-stretch h-100">
+
+                    <!-- Visual bars -->
+                    <div id="cat-bars-col" class="col-md-6 pe-md-4">
+                        <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:1rem">
+                            Distribution of delay severity
+                        </div>
+                        <div th:each="entry : ${categories}" class="mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <span style="font-size:.82rem;font-weight:600;min-width:70px"
+                                      th:text="${entry.key}">—</span>
+                                <span style="font-size:.78rem;color:var(--text-muted)"
+                                      th:text="${entry.value + ' trips'}">0 trips</span>
+                            </div>
+                            <div class="cat-track">
+                                <div class="cat-fill"
+                                     th:style="|width:${maxCatCount > 0 ? entry.value * 100.0 / maxCatCount : 0}%;background:${categoryColors[entry.key]}|"
+                                     th:text="${entry.value > 0 ? entry.value : ''}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Breakdown table -->
+                    <div id="cat-breakdown-col" class="col-md-6 ps-md-4" style="border-left:1px solid var(--border)">
+                        <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:1rem">
+                            Category breakdown
+                        </div>
+                        <div th:each="entry : ${categories}" class="d-flex justify-content-between align-items-center mb-2 py-1"
+                             style="border-bottom:1px solid rgba(30,45,61,.5)">
+                            <span style="font-size:.85rem" th:text="${entry.key}">—</span>
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="badge-late" style="font-size:.8rem"
+                                      th:text="${entry.value}">0</span>
+                                <span style="font-size:.75rem;color:var(--text-muted);min-width:40px;text-align:right"
+                                      th:text="${dashboard.delayedTrips > 0 ? #numbers.formatDecimal(entry.value * 100.0 / dashboard.delayedTrips, 1, 'NONE', 1, 'POINT') + '%' : '0%'}">0%</span>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-2 d-flex justify-content-between align-items-center"
+                             style="border-top:1px solid var(--border)">
+                            <span style="font-size:.82rem;color:var(--text-muted)">Total delayed trips</span>
+                            <span class="badge-late fw-bold" th:text="${dashboard.delayedTrips}">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /th:unless empty -->
+</div><!-- /tab-analytics -->
+
+</main><!-- /main -->
+
+<!-- ═══════ THYMELEAF → CHART.JS DATA ═══════ -->
+<script th:inline="javascript">
+const _onTime      = /*[[${dashboard.onTimeTrips}]]*/ 0;
+const _delayed     = /*[[${dashboard.delayedTrips}]]*/ 0;
+const _hLabels     = /*[[${hourlyLabels}]]*/ [];
+const _hDelayPcts  = /*[[${hourlyDelayPcts}]]*/ [];
+const _hAvgDelays  = /*[[${hourlyAvgDelays}]]*/ [];
+const _dLabels     = /*[[${destLabels}]]*/ [];
+const _dAvgDelays  = /*[[${destAvgDelays}]]*/ [];
+const _dCounts     = /*[[${destDelayCounts}]]*/ [];
+const _catOnTime   = /*[[${catOnTime}]]*/ 0;
+const _catSmall    = /*[[${catSmall}]]*/ 0;
+const _catMedium   = /*[[${catMedium}]]*/ 0;
+const _catBig      = /*[[${catBig}]]*/ 0;
+const _catExtreme  = /*[[${catExtreme}]]*/ 0;
+const _CAT_DATA    = /*[[${delayCategoryData}]]*/ [];
+const _DELAYED_MIN = /*[[${delayedThreshold}]]*/ 5;
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+/* ═══════════════════════════════════════
+   LIVE BOARD LOGIC
+═══════════════════════════════════════ */
+let activeFilter = 'all';
+let refreshTimer;
+let countdown    = 30;
+let currentStation = document.getElementById('station-selector')?.value || 'CNLLY';
+
+function changeStation(code) {
+    if (code === 'OVERVIEW') window.location.href = '/overview';
+    else window.location.href = '/get?stationCode=' + code;
+}
+
+document.getElementById('filter-bar').addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn[data-filter]');
+    if (!btn) return;
+    document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    applyFilter();
+});
+
+function applyFilter() {
+    const rows = document.querySelectorAll('#train-tbody tr[data-dir]');
+    let visible = 0;
+    rows.forEach(row => {
+        const dir  = (row.dataset.dir || '').toLowerCase();
+        const late = parseInt(row.dataset.late || '0', 10);
+        let show =
+            activeFilter === 'all'     ||
+            (activeFilter === 'north'   && dir.includes('north')) ||
+            (activeFilter === 'south'   && dir.includes('south')) ||
+            (activeFilter === 'delayed' && late >= _DELAYED_MIN);
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    const rc = document.getElementById('row-count');
+    if (rc) rc.textContent = `Showing ${visible} train${visible !== 1 ? 's' : ''}`;
+}
+
+function delayBadge(late) {
+    let cat = _CAT_DATA[0];
+    for (let i = _CAT_DATA.length - 1; i >= 0; i--) {
+        if (late >= _CAT_DATA[i].minMinutes) { cat = _CAT_DATA[i]; break; }
+    }
+    const label = cat.isOnTime ? 'On time' : `+${late} min`;
+    return `<span style="background:${cat.bgColor};color:${cat.textColor};border:1px solid ${cat.borderColor};border-radius:5px;padding:2px 8px;font-size:.75rem">${label}</span>`;
+}
+
+function renderRow(t) {
+    const dir = t.direction === 'Northbound'
+        ? `<span class="dir-north"><i class="bi bi-arrow-up-short"></i>N</span>`
+        : t.direction === 'Southbound'
+        ? `<span class="dir-south"><i class="bi bi-arrow-down-short"></i>S</span>`
+        : `<span style="color:var(--text-muted);font-size:.8rem">${t.direction || '—'}</span>`;
+    const due = t.dueIn === 0 ? `<span class="due-now">Now</span>`
+        : t.dueIn <= 5 ? `<span class="due-soon">${t.dueIn} min</span>`
+        : `<span class="due-later">${t.dueIn} min</span>`;
+    const del = delayBadge(t.late);
+    const loc = t.locationType === 'O' ? `<span class="loc-origin">Origin</span>`
+        : t.locationType === 'D' ? `<span class="loc-dest">Destination</span>`
+        : t.locationType === 'S' ? `<span class="loc-stop">Stop</span>`
+        : `<span style="color:var(--text-muted);font-size:.78rem">${t.locationType || ''}</span>`;
+    const last = (t.lastLocation && t.lastLocation.trim())
+        ? `<span data-tooltip="${t.lastLocation}" style="color:var(--text-muted);font-size:.8rem">${t.lastLocation}</span>`
+        : `<span style="color:var(--border)">—</span>`;
+    return `<tr data-dir="${t.direction||''}" data-late="${t.late}">
+        <td><span class="train-chip">${t.trainCode||'—'}</span></td>
+        <td style="color:var(--text-muted);font-size:.78rem">${t.trainType||'—'}</td>
+        <td>${t.origin||'—'}</td><td>${t.destination||'—'}</td>
+        <td>${dir}</td><td>${t.schDepart||'—'}</td><td>${t.expDepart||'—'}</td>
+        <td>${t.schArrival||'—'}</td><td>${t.expArrival||'—'}</td>
+        <td>${due}</td><td><span class="badge-status">${t.status||'—'}</span></td>
+        <td>${del}</td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${last}</td>
+        <td>${loc}</td>
+    </tr>`;
+}
+
+async function fetchTrains() {
+    const btn = document.getElementById('refresh-btn');
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1 spin"></i>Loading…';
+    try {
+        const res = await fetch('/api/trains?stationCode=' + currentStation);
+        if (!res.ok) throw new Error(res.statusText);
+        const trains = await res.json();
+        const tbody = document.getElementById('train-tbody');
+        tbody.innerHTML = trains.length === 0
+            ? `<tr><td colspan="14"><div class="empty-state"><i class="bi bi-train-front-fill d-block mb-3"></i><div class="fw-semibold mb-1">No trains found</div></div></td></tr>`
+            : trains.map(renderRow).join('');
+        document.getElementById('clock').textContent =
+            new Date().toLocaleTimeString('en-IE', { hour12: false });
+        const delayed = trains.filter(t => t.late >= _DELAYED_MIN).length;
+        document.querySelectorAll('.stat-value')[0].textContent = trains.length;
+        document.querySelectorAll('.stat-value')[1].textContent = trains.length - delayed;
+        document.querySelectorAll('.stat-value')[2].textContent = delayed;
+        applyFilter();
+        resetCountdown();
+    } catch (err) {
+        console.error('Fetch failed:', err);
+    } finally {
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Refresh now';
+    }
+}
+
+function resetCountdown() {
+    clearInterval(refreshTimer);
+    countdown = 30;
+    const bar = document.getElementById('refresh-bar');
+    bar.style.animation = 'none'; bar.offsetHeight; bar.style.animation = '';
+    refreshTimer = setInterval(() => {
+        countdown--;
+        const el = document.getElementById('countdown-stat');
+        if (el) el.textContent = countdown;
+        if (countdown <= 0) fetchTrains();
+    }, 1000);
+}
+
+
+/* ═══════════════════════════════════════
+   TAB SWITCHING
+═══════════════════════════════════════ */
+let chartsReady = false;
+let _analyticsTimer;
+let _chartOntime, _chartHourly, _chartCats, _chartDest;
+
+function showTab(tab) {
+    const isLive = tab === 'live';
+    document.getElementById('tab-live').style.display      = isLive ? '' : 'none';
+    document.getElementById('tab-analytics').style.display = isLive ? 'none' : '';
+    document.querySelectorAll('.tab-nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector(`.tab-nav-btn[data-tab="${tab}"]`).classList.add('active');
+    if (!isLive) {
+        if (!chartsReady) { initCharts(); chartsReady = true; }
+        clearInterval(_analyticsTimer);
+        _analyticsTimer = setInterval(refreshAnalytics, 60_000);
+    } else {
+        clearInterval(_analyticsTimer);
+    }
+}
+
+
+/* ═══════════════════════════════════════
+   CHART.JS — DARK THEME DEFAULTS
+═══════════════════════════════════════ */
+Chart.defaults.color       = '#5d7a99';
+Chart.defaults.borderColor = '#1e2d3d';
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+
+const GRID  = { color: '#1e2d3d' };
+const TICKS = { color: '#5d7a99' };
+
+function makeCtx(id) {
+    const canvas = document.getElementById(id);
+    return canvas ? canvas.getContext('2d') : null;
+}
+
+function initCharts() {
+    // 1. On Time vs Delayed — doughnut
+    const ctxO = makeCtx('chart-ontime');
+    if (ctxO && (_onTime + _delayed) > 0) {
+        _chartOntime = new Chart(ctxO, {
+            type: 'doughnut',
+            data: {
+                labels: ['On Time', 'Delayed'],
+                datasets: [{
+                    data: [_onTime, _delayed],
+                    backgroundColor: ['rgba(62,207,115,.7)', 'rgba(248,113,113,.7)'],
+                    borderColor:     ['#3ecf73', '#f87171'],
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: true,
+                cutout: '62%',
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#5d7a99', padding: 14, font: { size: 12 } } },
+                    tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed} trains` } }
+                }
+            }
+        });
+    }
+
+    // 2. Hourly — dual-line (delay% + avg delay)
+    const ctxH = makeCtx('chart-hourly');
+    if (ctxH && _hLabels.length > 0) {
+        _chartHourly = new Chart(ctxH, {
+            type: 'line',
+            data: {
+                labels: _hLabels,
+                datasets: [
+                    {
+                        label: 'Delay Probability (%)',
+                        data: _hDelayPcts,
+                        yAxisID: 'yPct',
+                        borderColor: '#f87171',
+                        backgroundColor: 'rgba(248,113,113,.12)',
+                        fill: true, tension: 0.35, pointRadius: 4,
+                        pointBackgroundColor: '#f87171'
+                    },
+                    {
+                        label: 'Avg Delay (min)',
+                        data: _hAvgDelays,
+                        yAxisID: 'yMin',
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,.08)',
+                        fill: true, tension: 0.35, pointRadius: 4,
+                        pointBackgroundColor: '#f59e0b',
+                        borderDash: [5, 3]
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { labels: { color: '#5d7a99', font: { size: 11 } } } },
+                scales: {
+                    x:    { grid: GRID, ticks: TICKS },
+                    yPct: { grid: GRID, ticks: { ...TICKS, callback: v => v + '%' }, position: 'left',  beginAtZero: true },
+                    yMin: { grid: { display: false }, ticks: { ...TICKS, callback: v => v + ' m' }, position: 'right', beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // 3. Delay Categories — doughnut (severity tiers from enum)
+    const ctxC = makeCtx('chart-categories');
+    if (ctxC && (_catOnTime + _catSmall + _catMedium + _catBig + _catExtreme) > 0) {
+        _chartCats = new Chart(ctxC, {
+            type: 'doughnut',
+            data: {
+                labels: _CAT_DATA.map(c => c.displayLabel),
+                datasets: [{
+                    data: [_catOnTime, _catSmall, _catMedium, _catBig, _catExtreme],
+                    backgroundColor: _CAT_DATA.map(c => c.bgColor),
+                    borderColor:     _CAT_DATA.map(c => c.textColor),
+                    borderWidth: 2,
+                    hoverOffset: 6
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                cutout: '58%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed} trips` } }
+                }
+            }
+        });
+    }
+
+    // 4. Destinations — horizontal bar
+    const ctxD = makeCtx('chart-destinations');
+    if (ctxD && _dLabels.length > 0) {
+        _chartDest = new Chart(ctxD, {
+            type: 'bar',
+            data: {
+                labels: _dLabels,
+                datasets: [
+                    {
+                        label: 'Avg Delay (min)',
+                        data: _dAvgDelays,
+                        backgroundColor: 'rgba(245,158,11,.6)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 1, borderRadius: 4
+                    },
+                    {
+                        label: 'Delay Count',
+                        data: _dCounts,
+                        backgroundColor: 'rgba(248,113,113,.45)',
+                        borderColor: '#f87171',
+                        borderWidth: 1, borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#5d7a99', font: { size: 11 } } } },
+                scales: {
+                    x: { grid: GRID, ticks: TICKS },
+                    y: { grid: GRID, ticks: { color: '#e8f0f8', font: { size: 11 } } }
+                }
+            }
+        });
+    }
+}
+
+/* ═══════════════════════════════════════
+   ANALYTICS AUTO-REFRESH
+═══════════════════════════════════════ */
+let _analyticsRefreshing = false;
+
+async function refreshAnalytics() {
+    if (_analyticsRefreshing) return;
+    _analyticsRefreshing = true;
+    try {
+        const p = new URLSearchParams(window.location.search);
+        p.delete('stationCode');
+        const url = '/api/analytics/summary' + (p.toString() ? '?' + p : '');
+        const res = await fetch(url);
+        if (!res.ok) return;
+        _applyAnalytics(await res.json());
+    } catch (e) { console.error('Analytics refresh:', e); }
+    finally { _analyticsRefreshing = false; }
+}
+
+function _setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+
+function _applyAnalytics(d) {
+    const db = d.dashboard;
+
+    // Section 1 — summary cards
+    _setText('a-total-snaps',  db.totalSnapshots);
+    _setText('a-avg-delay',    db.averageDelay + ' min');
+    _setText('a-max-delay',    db.maxDelay + ' min');
+    _setText('a-unique-trips', db.uniqueTrips);
+    _setText('a-delay-prob',   db.delayProbability + '%');
+    const pc = document.getElementById('a-delay-prob-card');
+    if (pc) { pc.style.borderColor = db.delayProbabilityColor + '44'; pc.querySelector('.a-stat-val').style.color = db.delayProbabilityColor; }
+
+    // Section 2 — probability hero
+    const ph = document.getElementById('prob-hero');
+    if (ph) { ph.textContent = db.delayProbability + '%'; ph.style.color = db.delayProbabilityColor; }
+    _setText('prob-delayed',  db.delayedTrips + ' delayed');
+    _setText('prob-of-trips', 'of ' + db.uniqueTrips + ' trips');
+    _setText('prob-ontime',   db.onTimeTrips + ' on time');
+    const pf = document.getElementById('prob-fill');
+    if (pf) { pf.style.width = db.delayProbability + '%'; pf.style.background = db.delayProbabilityColor; }
+
+    // Section 3 — station ranking
+    const srTb = document.getElementById('station-rank-tbody');
+    if (srTb) srTb.innerHTML = _renderStationRankRows(d.stationRank || []);
+
+    // Section 5 — top 10 + destinations
+    const t10Tb = document.getElementById('top10-tbody');
+    if (t10Tb) t10Tb.innerHTML = _renderTop10Rows(d.top10Delays || []);
+    const destTb = document.getElementById('dest-table-tbody');
+    if (destTb) destTb.innerHTML = _renderDestRows(d.destinations || []);
+
+    // Section 6 — category bars + breakdown
+    const catBarsCol = document.getElementById('cat-bars-col');
+    if (catBarsCol) catBarsCol.innerHTML = _renderCatBars(d.categories || {}, d.maxCatCount || 1);
+    const catBdCol = document.getElementById('cat-breakdown-col');
+    if (catBdCol) catBdCol.innerHTML = _renderCatBreakdown(d.categories || {}, db.delayedTrips);
+
+    // Charts
+    if (_chartOntime) { _chartOntime.data.datasets[0].data = [db.onTimeTrips, db.delayedTrips]; _chartOntime.update(); }
+    if (_chartHourly && d.hourlyLabels && d.hourlyLabels.length) {
+        _chartHourly.data.labels = d.hourlyLabels;
+        _chartHourly.data.datasets[0].data = d.hourlyDelayPcts;
+        _chartHourly.data.datasets[1].data = d.hourlyAvgDelays;
+        _chartHourly.update();
+    }
+    if (_chartCats) { _chartCats.data.datasets[0].data = [d.catOnTime, d.catSmall, d.catMedium, d.catBig, d.catExtreme]; _chartCats.update(); }
+    if (_chartDest && d.destLabels && d.destLabels.length) {
+        _chartDest.data.labels = d.destLabels;
+        _chartDest.data.datasets[0].data = d.destAvgDelays;
+        _chartDest.data.datasets[1].data = d.destDelayCounts;
+        _chartDest.update();
+    }
+
+    // Refresh badge
+    const rb = document.getElementById('a-refreshed-at');
+    const rt = document.getElementById('a-refreshed-time');
+    if (rb && rt) { rb.style.display = ''; rt.textContent = new Date().toLocaleTimeString('en-IE', { hour12: false }); }
+}
+
+const _MEDALS = ['🥇','🥈','🥉'];
+function _renderStationRankRows(rows) {
+    if (!rows.length) return '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No station data yet</td></tr>';
+    return rows.map((s, i) => `<tr>
+        <td>${i < 3 ? `<span style="font-size:1rem">${_MEDALS[i]}</span>` : `<span style="color:var(--text-muted);font-size:.82rem">${i+1}</span>`}</td>
+        <td class="fw-semibold">${s.stationName}</td>
+        <td>${s.averageDelay > 0 ? `<span class="badge-late">${s.averageDelay} min</span>` : '<span class="badge-ontime">On time</span>'}</td>
+        <td><div class="d-flex align-items-center gap-2">
+            <span class="rank-bar-track"><span class="rank-bar-fill d-block" style="width:${s.delayProbability}%;background:${s.delayProbabilityBarColor};height:100%"></span></span>
+            <span style="font-size:.82rem;min-width:38px">${s.delayProbability}%</span>
+        </div></td>
+        <td style="color:#f87171">${s.delayedTrips}</td>
+        <td style="color:var(--text-muted)">${s.totalTrips}</td>
+    </tr>`).join('');
+}
+
+function _renderTop10Rows(rows) {
+    if (!rows.length) return '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delayed records</td></tr>';
+    return rows.map((r, i) => `<tr>
+        <td style="color:var(--text-muted);font-size:.82rem">${i+1}</td>
+        <td><span class="train-chip">${r.trainCode||'—'}</span></td>
+        <td style="font-size:.78rem"><span style="color:var(--text-primary)">${r.stationFullName||'—'}</span>${r.destination ? ` <span style="color:var(--text-muted)">→ ${r.destination}</span>` : ''}</td>
+        <td style="color:var(--text-muted);font-size:.78rem">${r.schDepart||'—'}</td>
+        <td style="color:var(--text-muted);font-size:.78rem">${r.schArrival||'—'}</td>
+        <td><span class="badge-late fw-bold">+${r.peakDelayMinutes} min</span></td>
+    </tr>`).join('');
+}
+
+function _renderDestRows(rows) {
+    if (!rows.length) return '<tr><td colspan="4" class="text-center py-4" style="color:var(--text-muted)">No destination data yet</td></tr>';
+    return rows.map(d => `<tr>
+        <td style="font-size:.82rem">${d.destination||'—'}</td>
+        <td><span class="badge-late">${d.avgDelay} min</span></td>
+        <td style="color:#f87171;font-size:.82rem">${d.delayCount}</td>
+        <td style="color:var(--text-muted);font-size:.82rem">${d.totalCount}</td>
+    </tr>`).join('');
+}
+
+function _catColor(key) { return _CAT_DATA.find(c => c.displayLabel === key)?.textColor || '#60a5fa'; }
+
+function _renderCatBars(cats, maxCount) {
+    const title = `<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:1rem">Distribution of delay severity</div>`;
+    const bars = Object.entries(cats).map(([key, val]) => {
+        const pct = maxCount > 0 ? (val * 100 / maxCount) : 0;
+        return `<div class="mb-3">
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span style="font-size:.82rem;font-weight:600;min-width:70px">${key}</span>
+                <span style="font-size:.78rem;color:var(--text-muted)">${val} trips</span>
+            </div>
+            <div class="cat-track"><div class="cat-fill" style="width:${pct}%;background:${_catColor(key)}">${val > 0 ? val : ''}</div></div>
+        </div>`;
+    }).join('');
+    return title + bars;
+}
+
+function _renderCatBreakdown(cats, delayedTrips) {
+    const title = `<div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:1rem">Category breakdown</div>`;
+    const rows = Object.entries(cats).map(([key, val]) => {
+        const pct = delayedTrips > 0 ? (val * 100 / delayedTrips).toFixed(1) + '%' : '0%';
+        return `<div class="d-flex justify-content-between align-items-center mb-2 py-1" style="border-bottom:1px solid rgba(30,45,61,.5)">
+            <span style="font-size:.85rem">${key}</span>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge-late" style="font-size:.8rem">${val}</span>
+                <span style="font-size:.75rem;color:var(--text-muted);min-width:40px;text-align:right">${pct}</span>
+            </div>
+        </div>`;
+    }).join('');
+    return title + rows + `<div class="mt-3 pt-2 d-flex justify-content-between align-items-center" style="border-top:1px solid var(--border)">
+        <span style="font-size:.82rem;color:var(--text-muted)">Total delayed trips</span>
+        <span class="badge-late fw-bold">${delayedTrips}</span>
+    </div>`;
+}
+
+/* Boot */
+const _params = new URLSearchParams(window.location.search);
+if (_params.has('from') || _params.has('to')) showTab('analytics');
+applyFilter();
+resetCountdown();
+</script>
+</body>
+</html>
