@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(psql *)",
+      "PowerShell(cmd /c \"dir \"\"C:\\\\Program Files\\\\PostgreSQL\"\" /b\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -c \"CREATE DATABASE irishrail;\")",
+      "PowerShell(java *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(cmd /c \"dir D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin /b\")",
+      "PowerShell(cmd /c \"\"\"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\"\" compile -f \"\"C:\\\\Users\\\\Pablo\\\\Desktop\\\\irishrail\\\\pom.xml\"\" 2>&1\")",
+      "Bash(mvn clean *)",
+      "PowerShell($env:PATH -split \";\" | Where-Object { $_ -ne \"\" })",
+      "WebFetch(domain:api.irishrail.ie)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Pablo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Pablo-Desktop-irishrail\\\\7e49f2a5-d7c5-45b3-9339-9a1b4d06cf2a\\\\tasks\\\\b3f2idjcr.output\" -Wait)",
+      "Bash(Select-String --line-buffered \"Started|ERROR|Exception|Tomcat|FATAL|port\")",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(PGPASSWORD=postgres psql *)",
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records WHERE captured_at >= CURRENT_DATE AND captured_at < CURRENT_DATE + INTERVAL '17 hours';\")",
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records; SELECT 'Tabela limpa.' AS status;\")",
+      "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Recurse -File -Include \"*.java\", \"*.py\", \"*.js\", \"*.ts\")",
+      "Bash(Select-Object -First 20)",
+      "Bash(Format-Table FullName)"
+    ]
+  }
+}

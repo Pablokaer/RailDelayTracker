@@ -238,16 +238,17 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th><th>Train</th><th>Origin</th><th>Station</th><th>Destination</th><th>Delay</th>
+                            <th>#</th><th>Train</th><th>Date</th><th>Origin</th><th>Station</th><th>Destination</th><th>Delay</th>
                         </tr>
                     </thead>
                     <tbody id="ov-top10-tbody">
                         <tr th:if="${top10Delays.isEmpty()}">
-                            <td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td>
+                            <td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td>
                         </tr>
                         <tr th:each="r, iter : ${top10Delays}">
                             <td style="color:var(--text-muted);font-size:.78rem" th:text="${iter.index + 1}">1</td>
                             <td><span class="train-chip" th:text="${r.trainCode}">—</span></td>
+                            <td style="font-size:.78rem;color:var(--text-muted)" th:text="${r.trainDate ?: '—'}">—</td>
                             <td style="font-size:.78rem;color:var(--text-muted)" th:text="${r.origin ?: '—'}">—</td>
                             <td style="font-size:.78rem" th:text="${r.stationFullName}">—</td>
                             <td style="font-size:.78rem;color:var(--text-muted)" th:text="${r.destination ?: '—'}">—</td>
@@ -511,11 +512,12 @@ function _applyOverview(d) {
     if (top10Tb) top10Tb.innerHTML = (d.top10Delays || []).map((r, i) => `<tr>
         <td style="color:var(--text-muted);font-size:.78rem">${i+1}</td>
         <td><span class="train-chip">${r.trainCode||'—'}</span></td>
+        <td style="font-size:.78rem;color:var(--text-muted)">${r.trainDate||'—'}</td>
         <td style="font-size:.78rem;color:var(--text-muted)">${r.origin||'—'}</td>
         <td style="font-size:.78rem">${r.stationFullName||'—'}</td>
         <td style="font-size:.78rem;color:var(--text-muted)">${r.destination||'—'}</td>
         <td><span class="badge-late fw-bold">+${r.peakDelayMinutes} min</span></td>
-    </tr>`).join('') || '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td></tr>';
 
     // Charts
     if (_ovHourlyChart && d.hourlyLabels && d.hourlyLabels.length) {
