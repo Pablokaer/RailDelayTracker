@@ -129,7 +129,11 @@ public class TrainInfo {
     public void setLocationType(String locationType) { this.locationType = locationType; }
 
     public boolean isLate() {
-        return late > 0;
+        return late >= 5;
+    }
+
+    public DelayCategory getDelayCategory() {
+        return DelayCategory.of(late);
     }
 
     public String getDueInDisplay() {

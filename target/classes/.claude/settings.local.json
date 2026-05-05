@@ -14,7 +14,10 @@
       "Bash(Get-Content \"C:\\\\Users\\\\Pablo\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Pablo-Desktop-irishrail\\\\7e49f2a5-d7c5-45b3-9339-9a1b4d06cf2a\\\\tasks\\\\b3f2idjcr.output\" -Wait)",
       "Bash(Select-String --line-buffered \"Started|ERROR|Exception|Tomcat|FATAL|port\")",
       "PowerShell(Test-Path *)",
-      "PowerShell(Stop-Process *)"
+      "PowerShell(Stop-Process *)",
+      "Bash(PGPASSWORD=postgres psql *)",
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records WHERE captured_at >= CURRENT_DATE AND captured_at < CURRENT_DATE + INTERVAL '17 hours';\")",
+      "PowerShell($env:PGPASSWORD = \"postgres\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\psql.exe\" -U postgres -d irishrail -c \"DELETE FROM train_delay_records; SELECT 'Tabela limpa.' AS status;\")"
     ]
   }
 }
