@@ -231,6 +231,45 @@
 
 
 <!-- ══════════════════════════════════════════
+     SECTION 2 — LAST 5 CAPTURED WITH DELAY
+══════════════════════════════════════════ -->
+<div class="row g-3 mb-5">
+    <div class="col-lg-5">
+        <div class="section-header"><i class="bi bi-activity"></i> Last Captured with Delay</div>
+        <div class="board-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Captured</th>
+                        <th>Train</th>
+                        <th>Station</th>
+                        <th>Route</th>
+                        <th>Delay</th>
+                    </tr>
+                </thead>
+                <tbody id="ov-recent-tbody">
+                    <tr th:if="${recentDelays.isEmpty()}">
+                        <td colspan="5" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td>
+                    </tr>
+                    <tr th:each="s : ${recentDelays}">
+                        <td style="font-size:.78rem;color:var(--text-muted);white-space:nowrap;font-family:monospace"
+                            th:text="${s.capturedAt ?: '—'}">—</td>
+                        <td><span class="train-chip" th:text="${s.trainCode}">—</span></td>
+                        <td style="font-size:.78rem" th:text="${s.stationFullName}">—</td>
+                        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">
+                            <span th:text="${s.origin ?: '?'}">—</span>
+                            <span style="margin:0 3px">→</span>
+                            <span th:text="${s.destination ?: '?'}">—</span>
+                        </td>
+                        <td><span class="badge-late fw-bold" th:text="${'+' + s.lateMinutes + ' min'}">—</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
      SECTION 3 — HOURLY + TOP 10
 ══════════════════════════════════════════ -->
 <div class="row g-3 mb-5">
@@ -251,12 +290,12 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th><th>Train</th><th>Date</th><th>Origin</th><th>Station</th><th>Destination</th><th>Delay</th>
+                            <th>#</th><th>Train</th><th>Date</th><th>Origin</th><th>Station</th><th>Destination</th><th>Delay</th><th>Captured</th>
                         </tr>
                     </thead>
                     <tbody id="ov-top10-tbody">
                         <tr th:if="${top10Delays.isEmpty()}">
-                            <td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td>
+                            <td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td>
                         </tr>
                         <tr th:each="r, iter : ${top10Delays}">
                             <td style="color:var(--text-muted);font-size:.78rem" th:text="${iter.index + 1}">1</td>
@@ -266,6 +305,7 @@
                             <td style="font-size:.78rem" th:text="${r.stationFullName}">—</td>
                             <td style="font-size:.78rem;color:var(--text-muted)" th:text="${r.destination ?: '—'}">—</td>
                             <td><span class="badge-late fw-bold" th:text="${'+' + r.peakDelayMinutes + ' min'}">—</span></td>
+                            <td style="font-size:.78rem;color:var(--text-muted);white-space:nowrap" th:text="${r.capturedAt ?: '—'}">—</td>
                         </tr>
                     </tbody>
                 </table>
@@ -299,6 +339,58 @@
                 <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f59e0b;margin-right:4px"></span>Medium</span>
                 <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f97316;margin-right:4px"></span>Big</span>
                 <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f87171;margin-right:4px"></span>Extreme</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     SECTION 5 — ROUTE RANKING
+══════════════════════════════════════════ -->
+<div th:unless="${routeRanking.isEmpty()}" class="row g-3 mb-5">
+    <div class="col-12">
+        <div class="section-header"><i class="bi bi-signpost-split"></i> Top Routes by Avg Delay</div>
+        <div class="board-wrap">
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Origin</th>
+                            <th>Destination</th>
+                            <th>Total Trips</th>
+                            <th>Delayed</th>
+                            <th>Delay Rate</th>
+                            <th>Avg Delay</th>
+                            <th>Total Delay</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr th:each="r, iter : ${routeRanking}">
+                            <td style="color:var(--text-muted);font-size:.78rem" th:text="${iter.index + 1}">1</td>
+                            <td style="font-weight:500" th:text="${r.origin}">—</td>
+                            <td>
+                                <span style="color:var(--text-muted);margin-right:4px">→</span>
+                                <span th:text="${r.destination}">—</span>
+                            </td>
+                            <td style="color:var(--text-muted)" th:text="${r.totalTrips}">0</td>
+                            <td style="color:#f87171" th:text="${r.delayedTrips}">0</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="rank-bar-track">
+                                        <span class="rank-bar-fill d-block"
+                                              th:style="|width:${r.delayProbability}%;background:${r.delayProbabilityBarColor};height:100%|"></span>
+                                    </span>
+                                    <span style="font-size:.82rem;min-width:40px"
+                                          th:text="${r.delayProbability + '%'}">0%</span>
+                                </div>
+                            </td>
+                            <td><span class="badge-late" th:text="${r.averageDelay + ' min'}">—</span></td>
+                            <td style="color:#f59e0b;font-size:.82rem;white-space:nowrap"
+                                th:text="${r.totalAccumulatedDelay + ' min'}">—</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -523,8 +615,19 @@ function _applyOverview(d) {
                 <span style="font-size:.82rem;min-width:40px">${s.delayProbability}%</span>
             </div></td>
             <td>${s.averageDelay > 0 ? `<span class="badge-late">${s.averageDelay} min</span>` : '<span class="badge-ontime">On time</span>'}</td>
-        </tr>`).join('') || '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No data yet</td></tr>';
+            <td style="color:#f59e0b;font-size:.82rem;white-space:nowrap">${s.totalAccumulatedDelay > 0 ? s.totalAccumulatedDelay + ' min' : '—'}</td>
+        </tr>`).join('') || '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No data yet</td></tr>';
     }
+
+    // Recent delays table
+    const recentTb = document.getElementById('ov-recent-tbody');
+    if (recentTb) recentTb.innerHTML = (d.recentDelays || []).map(s => `<tr>
+        <td style="font-size:.78rem;color:var(--text-muted);white-space:nowrap;font-family:monospace">${s.capturedAt||'—'}</td>
+        <td><span class="train-chip">${s.trainCode||'—'}</span></td>
+        <td style="font-size:.78rem">${s.stationFullName||'—'}</td>
+        <td style="font-size:.75rem;color:var(--text-muted);white-space:nowrap">${s.origin||'?'} → ${s.destination||'?'}</td>
+        <td><span class="badge-late fw-bold">+${s.lateMinutes} min</span></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td></tr>';
 
     // Top 10 table
     const top10Tb = document.getElementById('ov-top10-tbody');
@@ -536,7 +639,8 @@ function _applyOverview(d) {
         <td style="font-size:.78rem">${r.stationFullName||'—'}</td>
         <td style="font-size:.78rem;color:var(--text-muted)">${r.destination||'—'}</td>
         <td><span class="badge-late fw-bold">+${r.peakDelayMinutes} min</span></td>
-    </tr>`).join('') || '<tr><td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td></tr>';
+        <td style="font-size:.78rem;color:var(--text-muted);white-space:nowrap">${r.capturedAt||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td></tr>';
 
     // Charts
     if (_ovHourlyChart && d.hourlyLabels && d.hourlyLabels.length) {
@@ -591,11 +695,12 @@ function _applyOverview(d) {
                 <th onclick="sortTable(4)" data-col="4">On Time</th>
                 <th onclick="sortTable(5)" data-col="5">Delay Rate</th>
                 <th onclick="sortTable(6)" data-col="6">Avg Delay</th>
+                <th onclick="sortTable(7)" data-col="7">Total Delay</th>
             </tr>
             </thead>
             <tbody id="station-tbody" data-overview="true">
             <tr th:if="${allStations.isEmpty()}">
-                <td colspan="7" class="text-center py-4" style="color:var(--text-muted)">No data yet</td>
+                <td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No data yet</td>
             </tr>
             <tr th:each="s, iter : ${allStations}"
                 th:data-name="${s.stationName.toLowerCase()}">
@@ -630,6 +735,8 @@ function _applyOverview(d) {
                               th:text="${s.averageDelay + ' min'}">—</span>
                     <span th:if="${s.averageDelay <= 0}" class="badge-ontime">On time</span>
                 </td>
+                <td style="color:#f59e0b;font-size:.82rem;white-space:nowrap"
+                    th:text="${s.totalAccumulatedDelay > 0 ? s.totalAccumulatedDelay + ' min' : '—'}">—</td>
             </tr>
             </tbody>
         </table>

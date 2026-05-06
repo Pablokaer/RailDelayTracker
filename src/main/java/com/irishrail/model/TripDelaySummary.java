@@ -11,11 +11,12 @@ public class TripDelaySummary {
     private String destination;
     private int peakDelayMinutes;
     private long snapshotCount;
+    private String capturedAt;
 
     public TripDelaySummary(String trainCode, String stationFullName,
                              String trainDate, String schDepart, String schArrival,
                              String direction, String origin, String destination,
-                             int peakDelayMinutes, long snapshotCount) {
+                             int peakDelayMinutes, long snapshotCount, String capturedAt) {
         this.trainCode        = trainCode;
         this.stationFullName  = stationFullName;
         this.trainDate        = trainDate;
@@ -26,6 +27,7 @@ public class TripDelaySummary {
         this.destination      = destination;
         this.peakDelayMinutes = peakDelayMinutes;
         this.snapshotCount    = snapshotCount;
+        this.capturedAt       = capturedAt;
     }
 
     public String getTrainCode()        { return trainCode; }
@@ -38,4 +40,5 @@ public class TripDelaySummary {
     public String getDestination()      { return destination; }
     public int getPeakDelayMinutes()    { return peakDelayMinutes; }
     public long getSnapshotCount()      { return snapshotCount; }
+    public String getCapturedAt()       { return capturedAt; }
 }

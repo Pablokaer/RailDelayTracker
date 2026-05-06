@@ -29,7 +29,13 @@
       "Bash(Select-Object -ExpandProperty FullName)",
       "PowerShell(mvn compile *)",
       "PowerShell(Get-ChildItem *)",
-      "PowerShell($mvn = \"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA Community Edition 2024.3.2.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn\"; & $mvn compile -f \"D:\\\\programação\\\\RailDelayTracker\\\\pom.xml\" -q 2>&1 | Select-Object -Last 20)"
+      "PowerShell($mvn = \"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA Community Edition 2024.3.2.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn\"; & $mvn compile -f \"D:\\\\programação\\\\RailDelayTracker\\\\pom.xml\" -q 2>&1 | Select-Object -Last 20)",
+      "Bash(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Recurse)",
+      "Bash(Select-Object -First 30)",
+      "PowerShell($shortPath = \\(New-Object -ComObject Scripting.FileSystemObject\\).GetFolder\\(\"D:\\\\programação\\\\RailDelayTracker\"\\).ShortPath; & \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"$shortPath\\\\pom.xml\" compile -q 2>&1 | Select-Object -Last 25)",
+      "PowerShell($shortPath = \\(New-Object -ComObject Scripting.FileSystemObject\\).GetFolder\\(\"D:\\\\programação\\\\RailDelayTracker\"\\).ShortPath; Write-Host \"Short path: $shortPath\"; & \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"$shortPath\\\\pom.xml\" compile 2>&1 | Select-Object -Last 30)",
+      "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 30)",
+      "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 10)"
     ]
   }
 }

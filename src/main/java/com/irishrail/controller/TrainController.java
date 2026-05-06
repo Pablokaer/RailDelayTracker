@@ -145,6 +145,7 @@ public class TrainController {
         List<HourlyStats>      hourly;
         List<DestinationStats> destinations;
         List<TripDelaySummary> top10;
+        List<RouteStats>       routeRanking;
         Map<String, Long>      categories;
 
         if (hasStation) {
@@ -152,6 +153,7 @@ public class TrainController {
             hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
             destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
             top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
+            routeRanking = delayTrackingService.getTopRoutesByDelayForStation(filterFrom, filterTo, stationCode);
             categories   = delayTrackingService.getDelayCategoriesForStation(filterFrom, filterTo, stationCode);
         } else {
             dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
@@ -159,6 +161,7 @@ public class TrainController {
             hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
             destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
             top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
+            routeRanking = delayTrackingService.getTopRoutesByDelay(filterFrom, filterTo);
             categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
         }
 
@@ -176,11 +179,15 @@ public class TrainController {
         long catBig     = categories.getOrDefault(DelayCategory.BIG_DELAY.getDisplayLabel(),     0L);
         long catExtreme = categories.getOrDefault(DelayCategory.EXTREME_DELAY.getDisplayLabel(), 0L);
 
+        List<RecentDelayEntry> recentDelays = delayTrackingService.getRecentDelayedTrips();
+
         model.addAttribute("dashboard",            dashboard);
         model.addAttribute("allStations",          allStations);
         model.addAttribute("hourly",               hourly);
         model.addAttribute("destinations",         destinations);
         model.addAttribute("top10Delays",          top10);
+        model.addAttribute("routeRanking",         routeRanking);
+        model.addAttribute("recentDelays",         recentDelays);
         model.addAttribute("stations",             stations);
         model.addAttribute("selectedCode",         hasStation ? stationCode.toUpperCase() : "OVERVIEW");
         model.addAttribute("hasStationFilter",     hasStation);
@@ -287,6 +294,7 @@ public class TrainController {
         List<HourlyStats>      hourly;
         List<TripDelaySummary> top10;
         List<DestinationStats> destinations;
+        List<RouteStats>       routeRanking;
         Map<String, Long>      categories;
 
         if (hasStation) {
@@ -295,6 +303,7 @@ public class TrainController {
             hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
             top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
             destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
+            routeRanking = delayTrackingService.getTopRoutesByDelayForStation(filterFrom, filterTo, stationCode);
             categories   = delayTrackingService.getDelayCategoriesForStation(filterFrom, filterTo, stationCode);
         } else {
             dashboard    = delayTrackingService.getDashboardSummary(filterFrom, filterTo);
@@ -302,6 +311,7 @@ public class TrainController {
             hourly       = delayTrackingService.getHourlyStats(filterFrom, filterTo);
             top10        = delayTrackingService.getTop10LargestDelays(filterFrom, filterTo);
             destinations = delayTrackingService.getTopDestinationsByDelay(filterFrom, filterTo);
+            routeRanking = delayTrackingService.getTopRoutesByDelay(filterFrom, filterTo);
             categories   = delayTrackingService.getDelayCategories(filterFrom, filterTo);
         }
 
@@ -319,6 +329,8 @@ public class TrainController {
         result.put("hourlyDelayPcts", hourly.stream().map(HourlyStats::getDelayProbability).collect(Collectors.toList()));
         result.put("hourlyAvgDelays", hourly.stream().map(HourlyStats::getAvgDelay).collect(Collectors.toList()));
         result.put("top10Delays",     top10);
+        result.put("routeRanking",    routeRanking);
+        result.put("recentDelays",    delayTrackingService.getRecentDelayedTrips());
         result.put("destinations",    destinations);
         result.put("destLabels",      destinations.stream().map(DestinationStats::getDestination).collect(Collectors.toList()));
         result.put("destAvgDelays",   destinations.stream().map(DestinationStats::getAvgDelay).collect(Collectors.toList()));

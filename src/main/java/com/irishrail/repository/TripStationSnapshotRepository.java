@@ -68,7 +68,8 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
                    COUNT(*)                                                              AS total_trips,
                    SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END)             AS delayed_trips,
                    COALESCE(AVG(CASE WHEN peak_delay >= :minDelay
-                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay
+                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN peak_delay ELSE 0 END)    AS total_acc_delay
             FROM station_trips
             GROUP BY station_code, station_full_name
             ORDER BY delayed_trips DESC, avg_delay DESC
@@ -91,7 +92,8 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
                    COUNT(*)                                                              AS total_trips,
                    SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END)             AS delayed_trips,
                    COALESCE(AVG(CASE WHEN peak_delay >= :minDelay
-                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay
+                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN peak_delay ELSE 0 END)    AS total_acc_delay
             FROM station_trips
             GROUP BY station_code, station_full_name
             ORDER BY delayed_trips DESC, avg_delay DESC
@@ -117,22 +119,58 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
     // ── top 10 trips by peak delay ────────────────────────────────────────────
 
     @Query(value = """
-            SELECT t.train_code, s.station_full_name, t.train_date,
-                   s.sch_depart, s.sch_arrival,
-                   t.direction, t.origin, t.destination,
-                   MAX(s.late_minutes)  AS peak_delay,
-                   COUNT(*)             AS snapshot_count
-            FROM trip_station_snapshot s
-            JOIN trip t ON t.id = s.trip_id
-            WHERE s.captured_at >= :from AND s.captured_at < :to
-            GROUP BY t.train_code, s.station_full_name, t.train_date,
-                     s.sch_depart, s.sch_arrival, t.direction, t.origin, t.destination
-            HAVING MAX(s.late_minutes) >= :minDelay
-            ORDER BY peak_delay DESC
-            LIMIT 10
+            WITH trip_peaks AS (
+                SELECT t.id AS trip_id, t.train_code, t.train_date,
+                       t.direction, t.origin, t.destination,
+                       MAX(s.late_minutes) AS peak_delay,
+                       COUNT(*)            AS snapshot_count
+                FROM trip_station_snapshot s
+                JOIN trip t ON t.id = s.trip_id
+                WHERE s.captured_at >= :from AND s.captured_at < :to
+                GROUP BY t.id, t.train_code, t.train_date, t.direction, t.origin, t.destination
+                HAVING MAX(s.late_minutes) >= :minDelay
+                ORDER BY peak_delay DESC
+                LIMIT 10
+            ),
+            peak_snaps AS (
+                SELECT DISTINCT ON (s.trip_id)
+                       s.trip_id, s.station_full_name, s.sch_depart, s.sch_arrival, s.captured_at
+                FROM trip_station_snapshot s
+                JOIN trip_peaks tp ON tp.trip_id = s.trip_id
+                WHERE s.late_minutes = tp.peak_delay
+                  AND s.captured_at >= :from AND s.captured_at < :to
+                ORDER BY s.trip_id, s.captured_at ASC
+            )
+            SELECT tp.train_code, ps.station_full_name, tp.train_date,
+                   ps.sch_depart, ps.sch_arrival,
+                   tp.direction, tp.origin, tp.destination,
+                   tp.peak_delay, tp.snapshot_count,
+                   ps.captured_at AS peak_captured_at
+            FROM trip_peaks tp
+            JOIN peak_snaps ps ON ps.trip_id = tp.trip_id
+            ORDER BY tp.peak_delay DESC
             """, nativeQuery = true)
     List<Object[]> findTop10TripsByPeakDelay(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
                                              @Param("minDelay") int minDelay);
+
+    // ── top 5 most recently captured delayed trips (one per trip) ─────────────
+
+    @Query(value = """
+            SELECT sub.train_code, sub.station_full_name, sub.late_minutes, sub.captured_at,
+                   sub.origin, sub.destination
+            FROM (
+                SELECT DISTINCT ON (s.trip_id)
+                       t.train_code, s.station_full_name, s.late_minutes, s.captured_at,
+                       t.origin, t.destination
+                FROM trip_station_snapshot s
+                JOIN trip t ON t.id = s.trip_id
+                WHERE s.late_minutes >= :minDelay
+                ORDER BY s.trip_id, s.captured_at DESC
+            ) sub
+            ORDER BY sub.captured_at DESC
+            LIMIT 5
+            """, nativeQuery = true)
+    List<Object[]> findTop5RecentDelaysPerTrip(@Param("minDelay") int minDelay);
 
     // ── destinations ──────────────────────────────────────────────────────────
 
@@ -159,6 +197,62 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
             """, nativeQuery = true)
     List<Object[]> findTopDestinationsByAvgDelay(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
                                                  @Param("minDelay") int minDelay);
+
+    // ── route ranking ─────────────────────────────────────────────────────────
+
+    @Query(value = """
+            WITH route_delays AS (
+                SELECT t.origin, t.destination, s.trip_id,
+                       MAX(s.late_minutes) AS peak_delay
+                FROM trip_station_snapshot s
+                JOIN trip t ON t.id = s.trip_id
+                WHERE t.origin IS NOT NULL AND t.origin <> ''
+                  AND t.destination IS NOT NULL AND t.destination <> ''
+                  AND s.captured_at >= :from AND s.captured_at < :to
+                GROUP BY t.origin, t.destination, s.trip_id
+            )
+            SELECT origin, destination,
+                   COUNT(*)                                                              AS total_trips,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END)             AS delayed_trips,
+                   COALESCE(AVG(CASE WHEN peak_delay >= :minDelay
+                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN peak_delay ELSE 0 END)    AS total_acc_delay
+            FROM route_delays
+            GROUP BY origin, destination
+            HAVING SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END) > 0
+            ORDER BY total_acc_delay DESC
+            LIMIT 15
+            """, nativeQuery = true)
+    List<Object[]> findTopRoutesByDelay(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                        @Param("minDelay") int minDelay);
+
+    @Query(value = """
+            WITH route_delays AS (
+                SELECT t.origin, t.destination, s.trip_id,
+                       MAX(s.late_minutes) AS peak_delay
+                FROM trip_station_snapshot s
+                JOIN trip t ON t.id = s.trip_id
+                WHERE t.origin IS NOT NULL AND t.origin <> ''
+                  AND t.destination IS NOT NULL AND t.destination <> ''
+                  AND s.captured_at >= :from AND s.captured_at < :to
+                  AND UPPER(s.station_code) = UPPER(:stationCode)
+                GROUP BY t.origin, t.destination, s.trip_id
+            )
+            SELECT origin, destination,
+                   COUNT(*)                                                              AS total_trips,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END)             AS delayed_trips,
+                   COALESCE(AVG(CASE WHEN peak_delay >= :minDelay
+                                     THEN CAST(peak_delay AS FLOAT) END), 0)            AS avg_delay,
+                   SUM(CASE WHEN peak_delay >= :minDelay THEN peak_delay ELSE 0 END)    AS total_acc_delay
+            FROM route_delays
+            GROUP BY origin, destination
+            HAVING SUM(CASE WHEN peak_delay >= :minDelay THEN 1 ELSE 0 END) > 0
+            ORDER BY total_acc_delay DESC
+            LIMIT 15
+            """, nativeQuery = true)
+    List<Object[]> findTopRoutesByDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
+                                                  @Param("stationCode") String stationCode,
+                                                  @Param("minDelay") int minDelay);
 
     // ── delay categories ──────────────────────────────────────────────────────
 
@@ -288,20 +382,37 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
                                              @Param("stationCode") String stationCode);
 
     @Query(value = """
-            SELECT t.train_code, s.station_full_name, t.train_date,
-                   s.sch_depart, s.sch_arrival,
-                   t.direction, t.origin, t.destination,
-                   MAX(s.late_minutes)  AS peak_delay,
-                   COUNT(*)             AS snapshot_count
-            FROM trip_station_snapshot s
-            JOIN trip t ON t.id = s.trip_id
-            WHERE s.captured_at >= :from AND s.captured_at < :to
-              AND UPPER(s.station_code) = UPPER(:stationCode)
-            GROUP BY t.train_code, s.station_full_name, t.train_date,
-                     s.sch_depart, s.sch_arrival, t.direction, t.origin, t.destination
-            HAVING MAX(s.late_minutes) >= :minDelay
-            ORDER BY peak_delay DESC
-            LIMIT 10
+            WITH trip_peaks AS (
+                SELECT t.id AS trip_id, t.train_code, t.train_date,
+                       t.direction, t.origin, t.destination,
+                       MAX(s.late_minutes) AS peak_delay,
+                       COUNT(*)            AS snapshot_count
+                FROM trip_station_snapshot s
+                JOIN trip t ON t.id = s.trip_id
+                WHERE s.captured_at >= :from AND s.captured_at < :to
+                  AND UPPER(s.station_code) = UPPER(:stationCode)
+                GROUP BY t.id, t.train_code, t.train_date, t.direction, t.origin, t.destination
+                HAVING MAX(s.late_minutes) >= :minDelay
+                ORDER BY peak_delay DESC
+                LIMIT 10
+            ),
+            peak_snaps AS (
+                SELECT DISTINCT ON (s.trip_id)
+                       s.trip_id, s.station_full_name, s.sch_depart, s.sch_arrival, s.captured_at
+                FROM trip_station_snapshot s
+                JOIN trip_peaks tp ON tp.trip_id = s.trip_id
+                WHERE s.late_minutes = tp.peak_delay
+                  AND s.captured_at >= :from AND s.captured_at < :to
+                ORDER BY s.trip_id, s.captured_at ASC
+            )
+            SELECT tp.train_code, ps.station_full_name, tp.train_date,
+                   ps.sch_depart, ps.sch_arrival,
+                   tp.direction, tp.origin, tp.destination,
+                   tp.peak_delay, tp.snapshot_count,
+                   ps.captured_at AS peak_captured_at
+            FROM trip_peaks tp
+            JOIN peak_snaps ps ON ps.trip_id = tp.trip_id
+            ORDER BY tp.peak_delay DESC
             """, nativeQuery = true)
     List<Object[]> findTop10TripsByPeakDelayForStation(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to,
                                                        @Param("stationCode") String stationCode,

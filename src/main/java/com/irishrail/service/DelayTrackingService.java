@@ -6,8 +6,10 @@ import com.irishrail.repository.TripStationSnapshotRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -87,7 +89,8 @@ public class DelayTrackingService {
                         (String) r[0], (String) r[1],
                         ((Number) r[2]).longValue(),
                         ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue()
+                        ((Number) r[4]).doubleValue(),
+                        ((Number) r[5]).longValue()
                 ))
                 .collect(Collectors.toList());
     }
@@ -101,7 +104,8 @@ public class DelayTrackingService {
                         (String) r[0], (String) r[1],
                         ((Number) r[2]).longValue(),
                         ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue()
+                        ((Number) r[4]).doubleValue(),
+                        ((Number) r[5]).longValue()
                 ))
                 .collect(Collectors.toList());
     }
@@ -128,7 +132,8 @@ public class DelayTrackingService {
                 .map(r -> new TripDelaySummary(
                         (String) r[0], (String) r[1], (String) r[2], (String) r[3],
                         (String) r[4], (String) r[5], (String) r[6], (String) r[7],
-                        ((Number) r[8]).intValue(), ((Number) r[9]).longValue()
+                        ((Number) r[8]).intValue(), ((Number) r[9]).longValue(),
+                        formatCapturedAt(r[10])
                 ))
                 .collect(Collectors.toList());
     }
@@ -208,7 +213,8 @@ public class DelayTrackingService {
                 .map(r -> new TripDelaySummary(
                         (String) r[0], (String) r[1], (String) r[2], (String) r[3],
                         (String) r[4], (String) r[5], (String) r[6], (String) r[7],
-                        ((Number) r[8]).intValue(), ((Number) r[9]).longValue()
+                        ((Number) r[8]).intValue(), ((Number) r[9]).longValue(),
+                        formatCapturedAt(r[10])
                 ))
                 .collect(Collectors.toList());
     }
@@ -241,6 +247,22 @@ public class DelayTrackingService {
         return dist;
     }
 
+    // ── recent delayed trips (one per trip, deduped) ─────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<RecentDelayEntry> getRecentDelayedTrips() {
+        return snapshotRepository.findTop5RecentDelaysPerTrip(DELAYED_MIN).stream()
+                .map(r -> new RecentDelayEntry(
+                        (String) r[0],
+                        (String) r[1],
+                        ((Number) r[2]).intValue(),
+                        formatCapturedAt(r[3]),
+                        (String) r[4],
+                        (String) r[5]
+                ))
+                .collect(Collectors.toList());
+    }
+
     // ── legacy REST API ───────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
@@ -261,7 +283,44 @@ public class DelayTrackingService {
         return snapshotRepository.findTop50ByLateMinutesGreaterThanOrderByCapturedAtDesc(DELAYED_MIN - 1);
     }
 
+    // ── route ranking ─────────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public List<RouteStats> getTopRoutesByDelay(LocalDate from, LocalDate to) {
+        return snapshotRepository.findTopRoutesByDelay(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
+                .map(r -> new RouteStats(
+                        (String) r[0], (String) r[1],
+                        ((Number) r[2]).longValue(),
+                        ((Number) r[3]).longValue(),
+                        ((Number) r[4]).doubleValue(),
+                        ((Number) r[5]).longValue()
+                ))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<RouteStats> getTopRoutesByDelayForStation(LocalDate from, LocalDate to, String stationCode) {
+        return snapshotRepository.findTopRoutesByDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
+                .map(r -> new RouteStats(
+                        (String) r[0], (String) r[1],
+                        ((Number) r[2]).longValue(),
+                        ((Number) r[3]).longValue(),
+                        ((Number) r[4]).doubleValue(),
+                        ((Number) r[5]).longValue()
+                ))
+                .collect(Collectors.toList());
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
+
+    private String formatCapturedAt(Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof Timestamp) return ((Timestamp) raw).toLocalDateTime().format(HH_MM);
+        if (raw instanceof LocalDateTime) return ((LocalDateTime) raw).format(HH_MM);
+        return raw.toString();
+    }
 
     private LocalDateTime resolveFrom(LocalDate d) {
         return d != null ? d.atStartOfDay() : EPOCH;
