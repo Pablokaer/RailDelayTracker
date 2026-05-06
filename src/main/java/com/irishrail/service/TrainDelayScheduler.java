@@ -26,6 +26,7 @@ public class TrainDelayScheduler {
     private final DelayTrackingService          delayTrackingService;
     private final TripStationSnapshotRepository snapshotRepository;
     private final TripRepository                tripRepository;
+    private final SnapshotEventService          snapshotEventService;
 
     @Value("${irishrail.retention.days:90}")
     private int retentionDays;
@@ -36,11 +37,13 @@ public class TrainDelayScheduler {
     public TrainDelayScheduler(IrishRailService irishRailService,
                                DelayTrackingService delayTrackingService,
                                TripStationSnapshotRepository snapshotRepository,
-                               TripRepository tripRepository) {
+                               TripRepository tripRepository,
+                               SnapshotEventService snapshotEventService) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
         this.snapshotRepository   = snapshotRepository;
         this.tripRepository       = tripRepository;
+        this.snapshotEventService = snapshotEventService;
     }
 
     // ── collector: every 30 s during DART operating hours (06:00–00:30) ───────
@@ -68,6 +71,7 @@ public class TrainDelayScheduler {
         if (totalSaved > 0) {
             log.info("Collect: {} snapshots saved across {} stations", totalSaved, stations.size());
         }
+        snapshotEventService.broadcast();
     }
 
     // ── cleanup: every day at 03:00 ──────────────────────────────────────────

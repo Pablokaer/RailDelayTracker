@@ -28,7 +28,8 @@
       "Bash(Get-ChildItem -Recurse -Directory)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "PowerShell(mvn compile *)",
-      "PowerShell(Get-ChildItem *)"
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell($mvn = \"C:\\\\Program Files\\\\JetBrains\\\\IntelliJ IDEA Community Edition 2024.3.2.2\\\\plugins\\\\maven\\\\lib\\\\maven3\\\\bin\\\\mvn\"; & $mvn compile -f \"D:\\\\programação\\\\RailDelayTracker\\\\pom.xml\" -q 2>&1 | Select-Object -Last 20)"
     ]
   }
 }

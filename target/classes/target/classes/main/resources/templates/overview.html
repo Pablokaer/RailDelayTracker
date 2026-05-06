@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <style>
         :root {
+            font-size: 16px;
             --ir-green: #2E8539;
             --bg-main:  #0b0f14;
             --bg-card:  #111820;
@@ -53,12 +54,12 @@
 
         .section-header {
             display: flex; align-items: center; gap: 10px;
-            font-size: .68rem; text-transform: uppercase; letter-spacing: .12em;
+            font-size: .85rem; text-transform: uppercase; letter-spacing: .12em;
             font-weight: 700; color: var(--ir-green);
             border-bottom: 1px solid var(--border);
             padding-bottom: .6rem; margin-bottom: 1.1rem;
         }
-        .section-header i { font-size: .9rem; }
+        .section-header i { font-size: 1.6rem; }
 
         .rank-bar-track { width: 80px; height: 6px; background: #1e2d3d; border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
         .rank-bar-fill  { height: 100%; border-radius: 3px; }
@@ -512,7 +513,7 @@ function _applyOverview(d) {
         const medals = ['🥇','🥈','🥉'];
         tbody.innerHTML = (d.stationRank || []).map((s, i) => `<tr data-name="${(s.stationName||'').toLowerCase()}">
             <td style="color:var(--text-muted);font-size:.8rem">${i < 3 ? `<span style="font-size:1rem">${medals[i]}</span>` : i+1}</td>
-            <td><a href="/get?stationCode=${s.stationCode}" style="color:var(--text-primary);text-decoration:none;font-weight:500">${s.stationName}</a>
+            <td><a href="/overview?stationCode=${s.stationCode}" style="color:var(--text-primary);text-decoration:none;font-weight:500">${s.stationName}</a>
                 <span style="color:var(--text-muted);font-size:.72rem;margin-left:4px">${s.stationCode}</span></td>
             <td style="color:var(--text-muted)">${s.totalTrips}</td>
             <td style="color:#f87171">${s.delayedTrips}</td>
@@ -555,7 +556,11 @@ function _applyOverview(d) {
         _ovCatChart.update();
     }
 }
-setInterval(refreshOverview, 60_000);
+(function connectSSE() {
+    const es = new EventSource('/api/events');
+    es.addEventListener('snapshot', refreshOverview);
+    es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+})();
 </script>
 <!-- ══════════════════════════════════════════
      SECTION 2 — FULL STATION RANKING
@@ -601,7 +606,7 @@ setInterval(refreshOverview, 60_000);
                     <span th:if="${iter.index >= 3}" th:text="${iter.index + 1}"></span>
                 </td>
                 <td>
-                    <a th:href="'/get?stationCode=' + ${s.stationCode}"
+                    <a th:href="'/overview?stationCode=' + ${s.stationCode}"
                        style="color:var(--text-primary);text-decoration:none;font-weight:500"
                        th:text="${s.stationName}">—</a>
                     <span style="color:var(--text-muted);font-size:.72rem;margin-left:4px"

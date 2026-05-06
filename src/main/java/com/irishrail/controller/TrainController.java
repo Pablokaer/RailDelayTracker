@@ -3,12 +3,14 @@ package com.irishrail.controller;
 import com.irishrail.model.*;
 import com.irishrail.service.DelayTrackingService;
 import com.irishrail.service.IrishRailService;
+import com.irishrail.service.SnapshotEventService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -23,11 +25,14 @@ public class TrainController {
 
     private final IrishRailService irishRailService;
     private final DelayTrackingService delayTrackingService;
+    private final SnapshotEventService snapshotEventService;
 
     public TrainController(IrishRailService irishRailService,
-                           DelayTrackingService delayTrackingService) {
+                           DelayTrackingService delayTrackingService,
+                           SnapshotEventService snapshotEventService) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
+        this.snapshotEventService = snapshotEventService;
     }
 
     // ── live board + analytics ────────────────────────────────────────────────
@@ -256,6 +261,12 @@ public class TrainController {
             @RequestParam(required = false) String to,
             @RequestParam(required = false) String stationCode) {
         return ResponseEntity.ok(buildAnalyticsPayload(from, to, stationCode));
+    }
+
+    @GetMapping("/api/events")
+    @ResponseBody
+    public SseEmitter getEvents() {
+        return snapshotEventService.subscribe();
     }
 
     @GetMapping("/")

@@ -874,7 +874,6 @@ function resetCountdown() {
    TAB SWITCHING
 ═══════════════════════════════════════ */
 let chartsReady = false;
-let _analyticsTimer;
 let _chartOntime, _chartHourly, _chartCats, _chartDest;
 
 function showTab(tab) {
@@ -883,13 +882,7 @@ function showTab(tab) {
     document.getElementById('tab-analytics').style.display = isLive ? 'none' : '';
     document.querySelectorAll('.tab-nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`.tab-nav-btn[data-tab="${tab}"]`).classList.add('active');
-    if (!isLive) {
-        if (!chartsReady) { initCharts(); chartsReady = true; }
-        clearInterval(_analyticsTimer);
-        _analyticsTimer = setInterval(refreshAnalytics, 60_000);
-    } else {
-        clearInterval(_analyticsTimer);
-    }
+    if (!isLive && !chartsReady) { initCharts(); chartsReady = true; }
 }
 
 
@@ -1198,6 +1191,16 @@ const _params = new URLSearchParams(window.location.search);
 if (_params.has('from') || _params.has('to')) showTab('analytics');
 applyFilter();
 resetCountdown();
+
+(function connectSSE() {
+    const es = new EventSource('/api/events');
+    es.addEventListener('snapshot', () => {
+        clearInterval(refreshTimer);
+        fetchTrains();
+        refreshAnalytics();
+    });
+    es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+})();
 </script>
 </body>
 </html>
