@@ -42,6 +42,10 @@ public class IrishRailService {
         }
     }
 
+    private static boolean containsHeuston(String value) {
+        return value != null && value.toLowerCase().contains("heuston");
+    }
+
     public List<TrainInfo> getTrainsByStation(String stationCode) {
         try {
             String url = stationDataBaseUrl + stationCode;
@@ -52,6 +56,7 @@ public class IrishRailService {
             if (trains == null) return Collections.emptyList();
             return trains.stream()
                     .filter(t -> !"bus".equalsIgnoreCase(t.getTrainType()))
+                    .filter(t -> !containsHeuston(t.getOrigin()) && !containsHeuston(t.getDestination()))
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Falha ao buscar dados da estação {}: {}", stationCode, e.getMessage());
