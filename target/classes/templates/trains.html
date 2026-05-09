@@ -139,6 +139,23 @@
         .period-btn:hover { border-color:var(--ir-green); color:var(--text-primary); }
         .period-btn.active { background:rgba(0,154,68,.15); border-color:var(--ir-green); color:#3ecf73; }
         .active-period-label { font-size:.75rem; color:#3ecf73; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); border-radius:20px; padding:3px 10px; white-space:nowrap; }
+
+        @media (max-width: 575px) {
+            .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
+            .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
+            .site-header .ms-3 { order: 9; flex: 0 0 100%; margin-left: 0 !important; }
+            .station-select { width: 100%; }
+            .stat-value { font-size: 1.65rem; }
+            .stat-card { padding: .75rem .9rem; }
+            .a-stat-val { font-size: 1.4rem; }
+            .a-stat-card { padding: .8rem .9rem; }
+            .tab-nav { overflow-x: auto; padding: 0 10px; }
+            .tab-nav-btn { padding: .65rem 1rem; font-size: .8rem; white-space: nowrap; }
+            .filter-period-bar { gap: .5rem; padding: .5rem .75rem; }
+            .period-btn { padding: 3px 10px; font-size: .72rem; }
+            #prob-hero { font-size: 2.5rem !important; }
+            .table-scroll table { min-width: 450px; }
+        }
     </style>
 </head>
 <body>
