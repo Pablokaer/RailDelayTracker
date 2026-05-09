@@ -155,8 +155,8 @@
 
     <span th:if="${hasFilter}" class="active-period-label">
         <i class="bi bi-calendar3 me-1"></i>
-        <span th:if="${filterFrom == filterTo}" th:text="${filterFrom}">—</span>
-        <span th:if="${filterFrom != filterTo}" th:text="${filterFrom + ' → ' + filterTo}">—</span>
+        <span th:if="${filterFrom == filterTo}" th:text="${filterFromDisplay}">—</span>
+        <span th:if="${filterFrom != filterTo}" th:text="${filterFromDisplay + ' → ' + filterToDisplay}">—</span>
     </span>
 </div>
 

@@ -1,4 +1,4 @@
-# RailDelayTracker
+﻿# RailDelayTracker
 
 Painel de monitoramento de atrasos em tempo real da rede DART (Dublin Area Rapid Transit), consumindo a API publica do Irish Rail e persistindo historico no PostgreSQL.
 

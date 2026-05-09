@@ -369,17 +369,21 @@ public class TrainController {
         return colors;
     }
 
+    private static final DateTimeFormatter DISPLAY_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     private void addFilterMeta(Model model, LocalDate from, LocalDate to, String stationCode) {
         LocalDate today     = LocalDate.now();
         LocalDate yesterday = today.minusDays(1);
-        model.addAttribute("filterFrom",  from != null ? from.toString() : "");
-        model.addAttribute("filterTo",    to   != null ? to.toString()   : "");
-        model.addAttribute("hasFilter",   from != null || to != null);
-        model.addAttribute("today",       today.toString());
-        model.addAttribute("yesterday",   yesterday.toString());
-        model.addAttribute("last7from",   today.minusDays(6).toString());
-        model.addAttribute("last30from",  today.minusDays(29).toString());
-        model.addAttribute("filterStation", stationCode);
+        model.addAttribute("filterFrom",        from != null ? from.toString() : "");
+        model.addAttribute("filterTo",          to   != null ? to.toString()   : "");
+        model.addAttribute("filterFromDisplay", from != null ? from.format(DISPLAY_FMT) : "");
+        model.addAttribute("filterToDisplay",   to   != null ? to.format(DISPLAY_FMT)   : "");
+        model.addAttribute("hasFilter",         from != null || to != null);
+        model.addAttribute("today",             today.toString());
+        model.addAttribute("yesterday",         yesterday.toString());
+        model.addAttribute("last7from",         today.minusDays(6).toString());
+        model.addAttribute("last30from",        today.minusDays(29).toString());
+        model.addAttribute("filterStation",     stationCode);
     }
 
     private static LocalDate parseDate(String s) {

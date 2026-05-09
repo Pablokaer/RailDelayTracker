@@ -35,7 +35,10 @@
       "PowerShell($shortPath = \\(New-Object -ComObject Scripting.FileSystemObject\\).GetFolder\\(\"D:\\\\programação\\\\RailDelayTracker\"\\).ShortPath; & \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"$shortPath\\\\pom.xml\" compile -q 2>&1 | Select-Object -Last 25)",
       "PowerShell($shortPath = \\(New-Object -ComObject Scripting.FileSystemObject\\).GetFolder\\(\"D:\\\\programação\\\\RailDelayTracker\"\\).ShortPath; Write-Host \"Short path: $shortPath\"; & \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"$shortPath\\\\pom.xml\" compile 2>&1 | Select-Object -Last 30)",
       "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 30)",
-      "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 10)"
+      "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 10)",
+      "Bash(psql *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

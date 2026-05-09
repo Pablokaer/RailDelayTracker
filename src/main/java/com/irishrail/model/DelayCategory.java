@@ -2,8 +2,8 @@ package com.irishrail.model;
 
 public enum DelayCategory {
 
-    ON_TIME      ("On Time",       0,  3,  "#3ecf73", "rgba(62,207,115,.18)",  "rgba(62,207,115,.35)"),
-    SMALL_DELAY  ("Small Delay",   4,  9,  "#60a5fa", "rgba(96,165,250,.18)",  "rgba(96,165,250,.35)"),
+    ON_TIME      ("On Time",       0,  4,  "#3ecf73", "rgba(62,207,115,.18)",  "rgba(62,207,115,.35)"),
+    SMALL_DELAY  ("Small Delay",   5,  9,  "#60a5fa", "rgba(96,165,250,.18)",  "rgba(96,165,250,.35)"),
     MEDIUM_DELAY ("Medium Delay", 10, 19,  "#f59e0b", "rgba(245,158,11,.18)",  "rgba(245,158,11,.35)"),
     BIG_DELAY    ("Big Delay",    20, 39,  "#f97316", "rgba(249,115,22,.18)",  "rgba(249,115,22,.35)"),
     EXTREME_DELAY("Extreme Delay",40, Integer.MAX_VALUE, "#f87171", "rgba(248,113,113,.18)", "rgba(248,113,113,.35)");
