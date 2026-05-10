@@ -1,26 +1,59 @@
-﻿# RailDelayTracker
+# RailDelayTracker
 
-Painel de monitoramento de atrasos em tempo real da rede DART (Dublin Area Rapid Transit), consumindo a API publica do Irish Rail e persistindo historico no PostgreSQL.
+## What is it
 
----
+RailDelayTracker is a web dashboard for monitoring delays on the **DART** network (Dublin Area Rapid Transit), the commuter rail line connecting the north and south coast of Dublin, Ireland.
 
-## Tecnologias
-
-- Java 21
-- Spring Boot 3.2.5
-- Spring Web + Spring Data JPA
-- Thymeleaf (templates HTML)
-- Jackson XML (desserializacao da API)
-- PostgreSQL (persistencia de viagens e snapshots)
-- Bootstrap 5 + Chart.js 4 (interface)
+The application collects real-time data from the Irish Rail public API, stores a history of snapshots in PostgreSQL, and provides two main views: a live departure board per station and an analytics dashboard with accumulated delay statistics.
 
 ---
 
-## Pre-requisitos
+## Where the data comes from
+
+All data comes exclusively from the **Irish Rail public API** (Iarnród Éireann), available at:
+
+```
+https://api.irishrail.ie/realtime/realtime.asmx
+```
+
+Two endpoints are used:
+
+| Endpoint | Returns |
+|---|---|
+| `getAllStationsXML_WithStationType?StationType=D` | All DART stations |
+| `getStationDataByCodeXML_WithNumMins?NumMins=90&StationCode=XXXX` | Trains expected in the next 90 minutes at a given station |
+
+The API returns **XML**, which is deserialized using Jackson XML. Each response includes scheduled time, actual time, minutes late, origin, destination, and train type.
+
+Data is collected automatically every **30 seconds** during DART operating hours (06:00–00:30), using Spring's `@Scheduled`. Each snapshot of a train at a station is persisted to the database to build the analytics history.
+
+Filters applied during collection:
+- Only DART stations (`StationType=D`)
+- Trains of type `bus` are discarded
+- Trains whose origin or destination contains "Heuston" are discarded (intercity line, not DART)
+
+---
+
+## Technologies
+
+| Layer | Technology |
+|---|---|
+| Language | Java 21 |
+| Framework | Spring Boot 3.2.5 |
+| Web / REST | Spring Web (RestTemplate, SseEmitter) |
+| Persistence | Spring Data JPA + PostgreSQL |
+| HTML Templates | Thymeleaf |
+| API Parsing | Jackson XML (`jackson-dataformat-xml`) |
+| Frontend | Bootstrap 5 + Chart.js 4 |
+| Build | Maven 3.8+ |
+
+---
+
+## Prerequisites
 
 - Java 21+
 - Maven 3.8+
-- PostgreSQL rodando localmente na porta `5432` com banco `irishrail` criado
+- PostgreSQL running locally on port `5432` with the `irishrail` database created
 
 ```sql
 CREATE DATABASE irishrail;
@@ -28,21 +61,21 @@ CREATE DATABASE irishrail;
 
 ---
 
-## Como rodar
+## How to run
 
 ```bash
-git clone <url-do-repositorio>
+git clone <repository-url>
 cd RailDelayTracker
 mvn spring-boot:run
 ```
 
-A aplicacao sobe na porta `8080` por padrao.
+The application starts on port `8080` by default.
 
 ---
 
-## Configuracao
+## Configuration
 
-Arquivo: `src/main/resources/application.properties`
+File: `src/main/resources/application.properties`
 
 ```properties
 spring.datasource.url=jdbc:postgresql://localhost:5432/irishrail
@@ -57,48 +90,41 @@ irishrail.retention.days=90
 
 ---
 
-## Coleta de dados
+## Pages
 
-O scheduler coleta dados automaticamente a cada **30 segundos** durante o horario de operacao DART (06:00-00:30).
-
-Filtros aplicados na captura:
-- Apenas estacoes DART (`StationType=D`)
-- Trens do tipo `bus` sao descartados
-- Trens com origem ou destino contendo "Heuston" sao descartados
-
----
-
-## Paginas disponiveis
-
-| Rota | Descricao |
+| Route | Description |
 |---|---|
-| `/` | Painel ao vivo da estacao selecionada |
-| `/overview` | Analytics da rede completa |
-| `/overview?stationCode=XXXX` | Analytics filtrado por estacao |
+| `/` | Redirects to today's overview |
+| `/get?stationCode=XXXX` | Live departure board for a station + analytics |
+| `/overview` | Analytics for the full DART network |
+| `/overview?stationCode=XXXX` | Analytics filtered by station |
 
 ---
 
-## Endpoints de API
+## API Endpoints
 
-| Endpoint | Descricao |
+| Endpoint | Description |
 |---|---|
-| `GET /api/trains?stationCode=XXXX` | Dados ao vivo de uma estacao |
-| `GET /api/analytics/overview` | Dados do dashboard (JSON) |
-| `GET /api/events` | SSE — atualizacoes em tempo real |
+| `GET /api/trains?stationCode=XXXX` | Live data for a station |
+| `GET /api/stations` | List of all DART stations |
+| `GET /api/analytics/overview` | Full analytics dashboard (JSON) |
+| `GET /api/analytics/summary` | Analytics summary with date filter |
+| `GET /api/analytics/recent` | Recent delay snapshots |
+| `GET /api/events` | SSE — real-time updates |
 
 ---
 
-## Estrutura do banco de dados
+## Database schema
 
-| Tabela | Descricao |
+| Table | Description |
 |---|---|
-| `trip` | Cada viagem unica (train_code + train_date) |
-| `trip_station_snapshot` | Snapshots de cada trem em cada estacao ao longo do tempo |
-| `train_delay_records` | Registro historico de atrasos capturados |
+| `trip` | Each unique journey (train_code + train_date) |
+| `trip_station_snapshot` | Snapshots of each train at each station over time |
+| `train_delay_records` | Historical record of captured delays |
 
 ---
 
-## Estrutura do projeto
+## Project structure
 
 ```
 src/main/java/com/irishrail/
@@ -110,16 +136,17 @@ src/main/java/com/irishrail/
     TrainDelayRecord.java
     Trip.java
     TripStationSnapshot.java
+    DelayCategory.java
     ...
   repository/
     TripRepository.java
     TripStationSnapshotRepository.java
     TrainDelayRepository.java
   service/
-    IrishRailService.java
-    DelayTrackingService.java
-    TrainDelayScheduler.java
-    SnapshotEventService.java
+    IrishRailService.java        # Fetches data from the Irish Rail API
+    DelayTrackingService.java    # Analytics queries against the database
+    TrainDelayScheduler.java     # Automatic collection every 30 seconds
+    SnapshotEventService.java    # SSE for live updates
 
 src/main/resources/
   application.properties
