@@ -258,24 +258,22 @@
                         <th>Captured</th>
                         <th>Train</th>
                         <th>Station</th>
-                        <th>Route</th>
+                        <th>Origin</th>
+                        <th>Destination</th>
                         <th>Delay</th>
                     </tr>
                 </thead>
                 <tbody id="ov-recent-tbody">
                     <tr th:if="${recentDelays.isEmpty()}">
-                        <td colspan="5" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td>
+                        <td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td>
                     </tr>
                     <tr th:each="s : ${recentDelays}">
                         <td style="font-size:.78rem;white-space:nowrap;font-family:monospace"
                             th:text="${s.capturedAt ?: '—'}">—</td>
                         <td><span class="train-chip" th:text="${s.trainCode}">—</span></td>
                         <td style="font-size:.78rem" th:text="${s.stationFullName}">—</td>
-                        <td style="font-size:.75rem;white-space:nowrap">
-                            <span th:text="${s.origin ?: '?'}">—</span>
-                            <span style="margin:0 3px">→</span>
-                            <span th:text="${s.destination ?: '?'}">—</span>
-                        </td>
+                        <td style="font-size:.78rem" th:text="${s.origin ?: '—'}">—</td>
+                        <td style="font-size:.78rem" th:text="${s.destination ?: '—'}">—</td>
                         <td><span class="badge-late fw-bold" th:text="${'+' + s.lateMinutes + ' min'}">—</span></td>
                     </tr>
                 </tbody>
@@ -388,7 +386,7 @@
                             <td style="font-size:.78rem" th:text="${iter.index + 1}">1</td>
                             <td style="font-weight:500" th:text="${r.origin}">—</td>
                             <td>
-                                <span style="color:var(--text-muted);margin-right:4px">→</span>
+                                <span style="color:var(--text-muted);margin-right:4px"></span>
                                 <span th:text="${r.destination}">—</span>
                             </td>
                             <td th:text="${r.totalTrips}">0</td>
@@ -643,9 +641,10 @@ function _applyOverview(d) {
         <td style="font-size:.78rem;white-space:nowrap;font-family:monospace">${s.capturedAt||'—'}</td>
         <td><span class="train-chip">${s.trainCode||'—'}</span></td>
         <td style="font-size:.78rem">${s.stationFullName||'—'}</td>
-        <td style="font-size:.75rem;white-space:nowrap">${s.origin||'?'} → ${s.destination||'?'}</td>
+        <td style="font-size:.78rem">${s.origin||'—'}</td>
+        <td style="font-size:.78rem">${s.destination||'—'}</td>
         <td><span class="badge-late fw-bold">+${s.lateMinutes} min</span></td>
-    </tr>`).join('') || '<tr><td colspan="5" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="6" class="text-center py-4" style="color:var(--text-muted)">No delays captured yet</td></tr>';
 
     // Top 10 table
     const top10Tb = document.getElementById('ov-top10-tbody');
