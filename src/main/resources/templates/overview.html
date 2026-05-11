@@ -94,6 +94,7 @@
             .filter-period-bar { gap: .5rem; padding: .5rem .75rem; }
             .period-btn { padding: 3px 10px; font-size: .72rem; }
             .table-scroll table { min-width: 450px; }
+            #chart-hourly { height: 220px !important; }
         }
     </style>
 </head>
@@ -509,7 +510,7 @@ if (ctxH && _hLabels.length > 0) {
             ]
         },
         options: {
-            responsive: true, maintainAspectRatio: true,
+            responsive: true, maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: { legend: { labels: { color: '#5d7a99', font: { size: 11 } } } },
             scales: {

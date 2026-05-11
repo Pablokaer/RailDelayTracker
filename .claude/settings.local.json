@@ -38,7 +38,9 @@
       "PowerShell(& \"D:\\\\programação\\\\maven-mvnd-1.0.3-windows-amd64\\\\bin\\\\mvnd.cmd\" -f \"D:\\\\PROGRA~1\\\\RailDelayTracker\\\\pom.xml\" clean compile 2>&1 | Select-Object -Last 10)",
       "Bash(psql *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\programação\\\\RailDelayTracker\" -Recurse | Where-Object { $_.FullName -notmatch \"node_modules|target|\\\\.git\" } | Select-Object -First 60 FullName)",
+      "PowerShell(Get-ChildItem \".\" -Recurse | Where-Object { $_.FullName -notmatch \"node_modules|target|\\\\.git\" } | Select-Object -First 60 FullName)"
     ]
   }
 }
