@@ -10,14 +10,14 @@
     <style>
         :root {
             font-size: 16px;
-            --ir-green: #2E8539;
-            --bg-main:  #0b0f14;
-            --bg-card:  #111820;
-            --bg-row:   #141c26;
-            --bg-row-alt: #0f1620;
-            --border:   #1e2d3d;
-            --text-primary: #e8f0f8;
-            --text-muted:   #5d7a99;
+            --ir-green: #00b84f;
+            --bg-main:  #070b0f;
+            --bg-card:  #0d1520;
+            --bg-row:   #101c28;
+            --bg-row-alt: #0b1520;
+            --border:   #1f3348;
+            --text-primary: #edf4ff;
+            --text-muted:   #6b8aac;
         }
         * { box-sizing: border-box; }
         body { background: var(--bg-main); color: var(--text-primary); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
@@ -29,7 +29,7 @@
         .station-select:focus,.station-select:hover { border-color:var(--ir-green); }
         .station-select option { background:#111820; }
 
-        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,.5); }
         table { width:100%; border-collapse:collapse; }
         thead th { background:#0d1822; color:var(--text-muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; white-space:nowrap; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; }
         thead th:hover { color: var(--text-primary); }
@@ -46,18 +46,20 @@
         .badge-ontime { background:rgba(59,130,246,.18); color:#60a5fa; border:1px solid rgba(59,130,246,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
         .badge-late   { background:rgba(224,52,52,.18);  color:#f87171; border:1px solid rgba(224,52,52,.3);  border-radius:5px; padding:2px 8px; font-size:.75rem; }
 
-        .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; }
+        .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; box-shadow:0 4px 16px rgba(0,0,0,.5); }
 
-        .a-stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.3rem; text-align: center; }
-        .a-stat-val  { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+        .a-stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.3rem; text-align: center; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+        .a-stat-val  { font-size: 1.75rem; font-weight: 800; line-height: 1; }
         .a-stat-lbl  { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-top: 4px; }
 
         .section-header {
             display: flex; align-items: center; gap: 10px;
-            font-size: .85rem; text-transform: uppercase; letter-spacing: .12em;
+            font-size: .85rem; text-transform: uppercase; letter-spacing: .10em;
             font-weight: 700; color: var(--ir-green);
             border-bottom: 1px solid var(--border);
-            padding-bottom: .6rem; margin-bottom: 1.1rem;
+            border-left: 3px solid var(--ir-green);
+            padding-left: .75rem;
+            padding-bottom: .6rem; margin-bottom: 1.25rem;
         }
         .section-header i { font-size: 1.6rem; }
 
@@ -90,11 +92,11 @@
             .station-select { width: 100%; }
             .a-stat-val { font-size: 1.4rem; }
             .a-stat-card { padding: .8rem .9rem; }
-            .section-header i { font-size: 1.2rem; }
             .filter-period-bar { gap: .5rem; padding: .5rem .75rem; }
             .period-btn { padding: 3px 10px; font-size: .72rem; }
             .table-scroll table { min-width: 450px; }
             #chart-hourly { height: 220px !important; }
+            .filter-period-bar form { flex: 0 0 100%; margin-left: 0 !important; }
         }
         @media (min-width: 576px) {
             #chart-hourly { height: 300px; }

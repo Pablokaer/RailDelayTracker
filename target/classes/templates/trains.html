@@ -9,14 +9,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <style>
         :root {
-            --ir-green: #009A44;
-            --bg-main:  #0b0f14;
-            --bg-card:  #111820;
-            --bg-row:   #141c26;
-            --bg-row-alt: #0f1620;
-            --border:   #1e2d3d;
-            --text-primary: #e8f0f8;
-            --text-muted:   #5d7a99;
+            --ir-green: #00b84f;
+            --bg-main:  #070b0f;
+            --bg-card:  #0d1520;
+            --bg-row:   #101c28;
+            --bg-row-alt: #0b1520;
+            --border:   #1f3348;
+            --text-primary: #edf4ff;
+            --text-muted:   #6b8aac;
             --red:   #e03434;
             --amber: #f59e0b;
             --blue:  #3b82f6;
@@ -39,8 +39,8 @@
         .tab-nav-btn.active { color:var(--ir-green); border-bottom-color:var(--ir-green); }
 
         /* Stat cards */
-        .stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.9rem 1.2rem; }
-        .stat-value { font-size:2rem; font-weight:700; line-height:1; }
+        .stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.9rem 1.2rem; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+        .stat-value { font-size:2rem; font-weight:800; line-height:1; }
         .stat-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.07em; color:var(--text-muted); margin-top:3px; }
 
         /* Filter */
@@ -50,7 +50,7 @@
         .filter-btn.active { background:var(--ir-green); border-color:var(--ir-green); color:#fff; }
 
         /* Table / board */
-        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,.5); }
         table { width:100%; border-collapse:collapse; }
         thead th { background:#0d1822; color:var(--text-muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; white-space:nowrap; border-bottom:1px solid var(--border); }
         tbody tr { border-bottom:1px solid var(--border); transition:background .12s; }
@@ -98,21 +98,23 @@
         /* ── Analytics styles ─────────────────────────────────────────────── */
         .section-header {
             display: flex; align-items: center; gap: 10px;
-            font-size: .68rem; text-transform: uppercase; letter-spacing: .12em;
+            font-size: .75rem; text-transform: uppercase; letter-spacing: .10em;
             font-weight: 700; color: var(--ir-green);
             border-bottom: 1px solid var(--border);
-            padding-bottom: .6rem; margin-bottom: 1.1rem;
+            border-left: 3px solid var(--ir-green);
+            padding-left: .75rem;
+            padding-bottom: .6rem; margin-bottom: 1.25rem;
         }
-        .section-header i { font-size: .9rem; }
+        .section-header i { font-size: 1rem; }
 
-        .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; }
+        .chart-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1.25rem; box-shadow:0 4px 16px rgba(0,0,0,.5); }
 
         .a-stat-card {
             background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 10px; padding: 1.1rem 1.3rem;
+            border-radius: 10px; padding: 1.1rem 1.3rem; box-shadow:0 4px 16px rgba(0,0,0,.5);
         }
-        .a-stat-val { font-size: 1.75rem; font-weight: 700; line-height: 1; }
-        .a-stat-lbl { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-top: 4px; }
+        .a-stat-val { font-size: 1.75rem; font-weight: 800; line-height: 1; }
+        .a-stat-lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin-top: 4px; }
 
         /* Delay probability bar */
         .prob-track { height: 14px; background: #0d1822; border-radius: 7px; overflow: hidden; }
@@ -140,6 +142,12 @@
         .period-btn.active { background:rgba(0,154,68,.15); border-color:var(--ir-green); color:#3ecf73; }
         .active-period-label { font-size:.75rem; color:#3ecf73; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); border-radius:20px; padding:3px 10px; white-space:nowrap; }
 
+        #chart-hourly { height: 300px; }
+        #cat-breakdown-col { border-top: 1px solid var(--border); padding-top: .75rem; margin-top: .25rem; }
+        @media (min-width: 768px) {
+            #cat-breakdown-col { border-top: none; padding-top: 0; margin-top: 0; border-left: 1px solid var(--border); }
+        }
+
         @media (max-width: 575px) {
             .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
             .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
@@ -155,6 +163,9 @@
             .period-btn { padding: 3px 10px; font-size: .72rem; }
             #prob-hero { font-size: 2.5rem !important; }
             .table-scroll table { min-width: 450px; }
+            #chart-hourly { height: 220px; }
+            .filter-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .filter-period-bar form { flex: 0 0 100%; margin-left: 0 !important; }
         }
     </style>
 </head>
@@ -558,7 +569,7 @@
             <i class="bi bi-clock-history"></i> Hourly Delay Analysis
         </div>
         <div class="chart-card mb-5">
-            <canvas id="chart-hourly" height="90"></canvas>
+            <canvas id="chart-hourly"></canvas>
         </div>
     </div>
 
@@ -717,7 +728,7 @@
                     </div>
 
                     <!-- Breakdown table -->
-                    <div id="cat-breakdown-col" class="col-md-6 ps-md-4" style="border-left:1px solid var(--border)">
+                    <div id="cat-breakdown-col" class="col-md-6 ps-md-4">
                         <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:1rem">
                             Category breakdown
                         </div>
@@ -975,7 +986,7 @@ function initCharts() {
                 ]
             },
             options: {
-                responsive: true, maintainAspectRatio: true,
+                responsive: true, maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: { legend: { labels: { color: '#5d7a99', font: { size: 11 } } } },
                 scales: {
