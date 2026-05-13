@@ -128,12 +128,17 @@ public class TrainController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
             @RequestParam(required = false) String stationCode,
+            @RequestParam(required = false, defaultValue = "") String period,
             Model model) {
 
-        LocalDate filterFrom  = parseDate(from);
-        LocalDate filterTo    = parseDate(to);
-        boolean   hasStation  = stationCode != null && !stationCode.isBlank()
-                                && !"OVERVIEW".equalsIgnoreCase(stationCode);
+        boolean   allTime         = "all".equalsIgnoreCase(period);
+        boolean   hasExplicit     = (from != null && !from.isBlank()) || (to != null && !to.isBlank());
+        boolean   isDefaultFilter = !allTime && !hasExplicit;
+        LocalDate today           = LocalDate.now();
+        LocalDate filterFrom      = allTime ? null : (hasExplicit ? parseDate(from) : today);
+        LocalDate filterTo        = allTime ? null : (hasExplicit ? parseDate(to)   : today);
+        boolean   hasStation      = stationCode != null && !stationCode.isBlank()
+                                    && !"OVERVIEW".equalsIgnoreCase(stationCode);
 
         List<Station> stations = irishRailService.getAllDartStations()
                 .stream()
@@ -216,6 +221,8 @@ public class TrainController {
         model.addAttribute("delayedThreshold",  DelayCategory.delayedThreshold());
 
         addFilterMeta(model, filterFrom, filterTo, hasStation ? stationCode : "OVERVIEW");
+        model.addAttribute("hasFilter",       hasExplicit);
+        model.addAttribute("isDefaultFilter", isDefaultFilter);
 
         return "overview";
     }
@@ -258,7 +265,7 @@ public class TrainController {
     public ResponseEntity<Map<String, Object>> getAnalyticsSummary(
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
-        return ResponseEntity.ok(buildAnalyticsPayload(from, to, null));
+        return ResponseEntity.ok(buildAnalyticsPayload(from, to, null, ""));
     }
 
     @GetMapping("/api/analytics/overview")
@@ -266,8 +273,9 @@ public class TrainController {
     public ResponseEntity<Map<String, Object>> getAnalyticsOverview(
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
-            @RequestParam(required = false) String stationCode) {
-        return ResponseEntity.ok(buildAnalyticsPayload(from, to, stationCode));
+            @RequestParam(required = false) String stationCode,
+            @RequestParam(required = false, defaultValue = "") String period) {
+        return ResponseEntity.ok(buildAnalyticsPayload(from, to, stationCode, period));
     }
 
     @GetMapping("/api/events")
@@ -278,14 +286,17 @@ public class TrainController {
 
     @GetMapping("/")
     public String home() {
-        return "redirect:/overview?from=" + LocalDate.now() + "&to=" + LocalDate.now();
+        return "redirect:/overview";
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private Map<String, Object> buildAnalyticsPayload(String from, String to, String stationCode) {
-        LocalDate filterFrom = parseDate(from);
-        LocalDate filterTo   = parseDate(to);
+    private Map<String, Object> buildAnalyticsPayload(String from, String to, String stationCode, String period) {
+        boolean   allTime    = "all".equalsIgnoreCase(period);
+        boolean   hasExplicit = (from != null && !from.isBlank()) || (to != null && !to.isBlank());
+        LocalDate today      = LocalDate.now();
+        LocalDate filterFrom = allTime ? null : (hasExplicit ? parseDate(from) : today);
+        LocalDate filterTo   = allTime ? null : (hasExplicit ? parseDate(to)   : today);
         boolean   hasStation = stationCode != null && !stationCode.isBlank()
                                && !"OVERVIEW".equalsIgnoreCase(stationCode);
 

@@ -144,12 +144,12 @@
         <i class="bi bi-funnel me-1"></i>Period
     </span>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode : '/overview'}"
-       class="period-btn" th:classappend="${!hasFilter} ? ' active' : ''">All time</a>
+    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&period=all' : '/overview?period=all'}"
+       class="period-btn" th:classappend="${!hasFilter and !isDefaultFilter} ? ' active' : ''">All time</a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + today + '&to=' + today : '/overview?from=' + today + '&to=' + today}"
+    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode : '/overview'}"
        class="period-btn"
-       th:classappend="${filterFrom == today and filterTo == today} ? ' active' : ''">Today</a>
+       th:classappend="${isDefaultFilter or (filterFrom == today and filterTo == today)} ? ' active' : ''">Today</a>
 
     <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + yesterday + '&to=' + yesterday : '/overview?from=' + yesterday + '&to=' + yesterday}"
        class="period-btn"
