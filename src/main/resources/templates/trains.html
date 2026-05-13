@@ -94,6 +94,11 @@
         .empty-state i { font-size:4rem; opacity:.25; }
         .spin { animation:spin .6s linear infinite; }
         @keyframes spin { to{transform:rotate(360deg)} }
+        @keyframes fadeSlideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes rowSlideIn  { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
+        .rank-bar-fill,.cat-fill { transition:width .6s cubic-bezier(.25,.8,.25,1) !important; }
+        .stat-card,.a-stat-card,.chart-card,.board-wrap { opacity:0; transform:translateY(18px); transition:opacity .5s ease,transform .5s ease; will-change:opacity,transform; }
+        .stat-card.visible,.a-stat-card.visible,.chart-card.visible,.board-wrap.visible { opacity:1; transform:translateY(0); will-change:auto; }
 
         /* ── Analytics styles ─────────────────────────────────────────────── */
         .section-header {
@@ -872,10 +877,12 @@ async function fetchTrains() {
         document.getElementById('clock').textContent =
             new Date().toLocaleTimeString('en-IE', { hour12: false });
         const delayed = trains.filter(t => t.late >= _DELAYED_MIN).length;
-        document.querySelectorAll('.stat-value')[0].textContent = trains.length;
-        document.querySelectorAll('.stat-value')[1].textContent = trains.length - delayed;
-        document.querySelectorAll('.stat-value')[2].textContent = delayed;
+        const svs = document.querySelectorAll('.stat-value');
+        numUpdate(svs[0], trains.length);
+        numUpdate(svs[1], trains.length - delayed);
+        numUpdate(svs[2], delayed);
         applyFilter();
+        staggerRows(document.getElementById('train-tbody'));
         resetCountdown();
     } catch (err) {
         console.error('Fetch failed:', err);
@@ -910,7 +917,12 @@ function showTab(tab) {
     document.getElementById('tab-analytics').style.display = isLive ? 'none' : '';
     document.querySelectorAll('.tab-nav-btn').forEach(b => b.classList.remove('active'));
     document.querySelector(`.tab-nav-btn[data-tab="${tab}"]`).classList.add('active');
-    if (!isLive && !chartsReady) { initCharts(); chartsReady = true; }
+    if (!isLive && !chartsReady) {
+        initCharts(); chartsReady = true;
+        document.querySelectorAll('.a-stat-val').forEach(el => countUp(el));
+        animateBars();
+        ['station-rank-tbody','top10-tbody','dest-table-tbody'].forEach(id => staggerRows(document.getElementById(id)));
+    }
 }
 
 
@@ -1086,20 +1098,20 @@ function _applyAnalytics(d) {
     const db = d.dashboard;
 
     // Section 1 — summary cards
-    _setText('a-total-snaps',  db.totalSnapshots);
-    _setText('a-avg-delay',    db.averageDelay + ' min');
-    _setText('a-max-delay',    db.maxDelay + ' min');
-    _setText('a-unique-trips', db.uniqueTrips);
-    _setText('a-delay-prob',   db.delayProbability + '%');
+    numUpdate(document.getElementById('a-total-snaps'),  db.totalSnapshots);
+    numUpdate(document.getElementById('a-avg-delay'),    db.averageDelay, ' min');
+    numUpdate(document.getElementById('a-max-delay'),    db.maxDelay, ' min');
+    numUpdate(document.getElementById('a-unique-trips'), db.uniqueTrips);
+    numUpdate(document.getElementById('a-delay-prob'),   db.delayProbability, '%');
     const pc = document.getElementById('a-delay-prob-card');
     if (pc) { pc.style.borderColor = db.delayProbabilityColor + '44'; pc.querySelector('.a-stat-val').style.color = db.delayProbabilityColor; }
 
     // Section 2 — probability hero
     const ph = document.getElementById('prob-hero');
-    if (ph) { ph.textContent = db.delayProbability + '%'; ph.style.color = db.delayProbabilityColor; }
-    _setText('prob-delayed',  db.delayedTrips + ' delayed');
+    if (ph) { numUpdate(ph, db.delayProbability, '%'); ph.style.color = db.delayProbabilityColor; }
+    numUpdate(document.getElementById('prob-delayed'),  db.delayedTrips, ' delayed');
     _setText('prob-of-trips', 'of ' + db.uniqueTrips + ' trips');
-    _setText('prob-ontime',   db.onTimeTrips + ' on time');
+    numUpdate(document.getElementById('prob-ontime'),   db.onTimeTrips, ' on time');
     const pf = document.getElementById('prob-fill');
     if (pf) { pf.style.width = db.delayProbability + '%'; pf.style.background = db.delayProbabilityColor; }
 
@@ -1134,6 +1146,12 @@ function _applyAnalytics(d) {
         _chartDest.data.datasets[1].data = d.destDelayCounts;
         _chartDest.update();
     }
+
+    // Animate updated rows and bars
+    staggerRows(document.getElementById('station-rank-tbody'));
+    staggerRows(document.getElementById('top10-tbody'));
+    staggerRows(document.getElementById('dest-table-tbody'));
+    animateBars();
 
     // Refresh badge
     const rb = document.getElementById('a-refreshed-at');
@@ -1214,11 +1232,77 @@ function _renderCatBreakdown(cats, delayedTrips) {
     </div>`;
 }
 
+/* ── Animation helpers ── */
+function countUp(el, dur) {
+    dur = dur || 800;
+    const raw = el.textContent.trim();
+    const m = raw.match(/^(\d+)(.*)/);
+    if (!m || +m[1] === 0) return;
+    const target = +m[1], suffix = m[2], t0 = performance.now();
+    (function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        el.textContent = Math.round((1 - Math.pow(1-p,3)) * target) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+}
+function animateBars() {
+    document.querySelectorAll('.rank-bar-fill,.prob-fill,.cat-fill').forEach(el => {
+        const w = el.style.width; if (!w) return;
+        el.style.transition = 'none'; el.style.width = '0';
+        requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transition = ''; el.style.width = w; }));
+    });
+}
+function staggerRows(tbody) {
+    if (!tbody) return;
+    Array.from(tbody.querySelectorAll('tr')).forEach((r, i) => {
+        r.style.animation = `rowSlideIn .22s ease ${i * 28}ms both`;
+    });
+}
+function animateCards(sel, base) {
+    document.querySelectorAll(sel).forEach((el, i) => {
+        el.style.animation = `fadeSlideUp .35s ease ${(base||0) + i * 55}ms both`;
+    });
+}
+function setupReveal() {
+    const els = document.querySelectorAll('.stat-card,.a-stat-card,.chart-card,.board-wrap');
+    let pending = [], timer;
+    const obs = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { pending.push(e.target); obs.unobserve(e.target); } });
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            pending.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            pending.forEach((el, i) => setTimeout(() => el.classList.add('visible'), i * 65));
+            pending = [];
+        }, 20);
+    }, { threshold: 0.07, rootMargin: '0px 0px -24px 0px' });
+    els.forEach(el => obs.observe(el));
+}
+function numUpdate(el, newVal, suffix) {
+    if (!el) return;
+    suffix = suffix || '';
+    const to = +newVal;
+    const m = (el.textContent || '').trim().match(/^(\d+)/);
+    const from = m ? +m[1] : 0;
+    if (from === to) return;
+    const dur = 420, t0 = performance.now();
+    (function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        el.textContent = Math.round(from + (1 - Math.pow(1-p,3)) * (to - from)) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+}
+
 /* Boot */
 const _params = new URLSearchParams(window.location.search);
-if (_params.has('from') || _params.has('to')) showTab('analytics');
+const _startAnalytics = _params.has('from') || _params.has('to');
+if (_startAnalytics) showTab('analytics');
 applyFilter();
 resetCountdown();
+if (!_startAnalytics) {
+    document.querySelectorAll('.stat-value').forEach(el => countUp(el));
+    staggerRows(document.getElementById('train-tbody'));
+}
+setupReveal();
 
 (function connectSSE() {
     const es = new EventSource('/api/events');

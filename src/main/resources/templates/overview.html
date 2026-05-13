@@ -101,6 +101,11 @@
         @media (min-width: 576px) {
             #chart-hourly { height: 300px; }
         }
+        @keyframes fadeSlideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes rowSlideIn  { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
+        .rank-bar-fill { transition:width .6s cubic-bezier(.25,.8,.25,1) !important; }
+        .a-stat-card,.chart-card,.board-wrap { opacity:0; transform:translateY(18px); transition:opacity .5s ease,transform .5s ease; will-change:opacity,transform; }
+        .a-stat-card.visible,.chart-card.visible,.board-wrap.visible { opacity:1; transform:translateY(0); will-change:auto; }
     </style>
 </head>
 <body>
@@ -439,6 +444,66 @@ const _CAT_DATA    = /*[[${delayCategoryData}]]*/ [];
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+/* ── Animation helpers ── */
+function countUp(el, dur) {
+    dur = dur || 800;
+    const raw = el.textContent.trim();
+    const m = raw.match(/^(\d+)(.*)/);
+    if (!m || +m[1] === 0) return;
+    const target = +m[1], suffix = m[2], t0 = performance.now();
+    (function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        el.textContent = Math.round((1 - Math.pow(1-p,3)) * target) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+}
+function animateBars() {
+    document.querySelectorAll('.rank-bar-fill').forEach(el => {
+        const w = el.style.width; if (!w) return;
+        el.style.transition = 'none'; el.style.width = '0';
+        requestAnimationFrame(() => requestAnimationFrame(() => { el.style.transition = ''; el.style.width = w; }));
+    });
+}
+function staggerRows(tbody) {
+    if (!tbody) return;
+    Array.from(tbody.querySelectorAll('tr')).forEach((r, i) => {
+        r.style.animation = `rowSlideIn .22s ease ${i * 28}ms both`;
+    });
+}
+function animateCards(sel, base) {
+    document.querySelectorAll(sel).forEach((el, i) => {
+        el.style.animation = `fadeSlideUp .35s ease ${(base||0) + i * 55}ms both`;
+    });
+}
+function setupReveal() {
+    const els = document.querySelectorAll('.a-stat-card,.chart-card,.board-wrap');
+    let pending = [], timer;
+    const obs = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { pending.push(e.target); obs.unobserve(e.target); } });
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            pending.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            pending.forEach((el, i) => setTimeout(() => el.classList.add('visible'), i * 65));
+            pending = [];
+        }, 20);
+    }, { threshold: 0.07, rootMargin: '0px 0px -24px 0px' });
+    els.forEach(el => obs.observe(el));
+}
+function numUpdate(el, newVal, suffix) {
+    if (!el) return;
+    suffix = suffix || '';
+    const to = +newVal;
+    const m = (el.textContent || '').trim().match(/^(\d+)/);
+    const from = m ? +m[1] : 0;
+    if (from === to) return;
+    const dur = 420, t0 = performance.now();
+    (function tick(now) {
+        const p = Math.min((now - t0) / dur, 1);
+        el.textContent = Math.round(from + (1 - Math.pow(1-p,3)) * (to - from)) + suffix;
+        if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+}
+
 /* ── Station navigation ──────────────────────────────────────────────── */
 function changeStation(code) {
     const p = new URLSearchParams(window.location.search);
@@ -611,13 +676,13 @@ function _applyOverview(d) {
     const db = d.dashboard;
 
     // Summary cards
-    _ovSetText('ov-total-snaps',  db.totalSnapshots);
-    _ovSetText('ov-unique-trips', db.uniqueTrips);
-    _ovSetText('ov-delayed',      db.delayedTrips);
-    _ovSetText('ov-ontime',       db.onTimeTrips);
-    _ovSetText('ov-avg-delay',    db.averageDelay + ' min');
-    _ovSetText('ov-max-delay',    db.maxDelay + ' min');
-    _ovSetText('ov-delay-prob',   db.delayProbability + '%');
+    numUpdate(document.getElementById('ov-total-snaps'),  db.totalSnapshots);
+    numUpdate(document.getElementById('ov-unique-trips'), db.uniqueTrips);
+    numUpdate(document.getElementById('ov-delayed'),      db.delayedTrips);
+    numUpdate(document.getElementById('ov-ontime'),       db.onTimeTrips);
+    numUpdate(document.getElementById('ov-avg-delay'),    db.averageDelay, ' min');
+    numUpdate(document.getElementById('ov-max-delay'),    db.maxDelay, ' min');
+    numUpdate(document.getElementById('ov-delay-prob'),   db.delayProbability, '%');
     const pc = document.getElementById('ov-delay-prob-card');
     if (pc) { pc.style.borderColor = db.delayProbabilityColor + '44'; pc.querySelector('.a-stat-val').style.color = db.delayProbabilityColor; }
 
@@ -682,12 +747,22 @@ function _applyOverview(d) {
         _ovCatChart.data.datasets[0].data = [d.catSmall, d.catMedium, d.catBig, d.catExtreme];
         _ovCatChart.update();
     }
+    ['ov-recent-tbody','ov-top10-tbody','station-tbody'].forEach(id => staggerRows(document.getElementById(id)));
+    animateBars();
 }
 (function connectSSE() {
     const es = new EventSource('/api/events');
     es.addEventListener('snapshot', refreshOverview);
     es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
 })();
+
+// Boot animations — DOMContentLoaded garante que o station ranking (após os scripts) já está no DOM
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.a-stat-val').forEach(el => countUp(el));
+    animateBars();
+    ['ov-recent-tbody','ov-top10-tbody','station-tbody'].forEach(id => staggerRows(document.getElementById(id)));
+    setupReveal();
+});
 </script>
 <!-- ══════════════════════════════════════════
      SECTION 2 — FULL STATION RANKING
