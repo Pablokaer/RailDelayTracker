@@ -1,4 +1,6 @@
 com\irishrail\service\TrainDelayScheduler.class
+com\irishrail\model\ServiceScope.class
+com\irishrail\service\DatabaseIndexInitializer.class
 com\irishrail\IrishRailApplication.class
 com\irishrail\model\StationStats.class
 com\irishrail\service\SnapshotEventService.class
@@ -8,6 +10,7 @@ com\irishrail\repository\TrainDelayRepository.class
 com\irishrail\repository\TripStationSnapshotRepository.class
 com\irishrail\model\DestinationStats.class
 com\irishrail\repository\TripRepository.class
+com\irishrail\model\DelayLimits.class
 com\irishrail\controller\TrainController.class
 com\irishrail\model\DelayCategory.class
 com\irishrail\model\HourlyStats.class
@@ -20,6 +23,7 @@ com\irishrail\model\TrainInfoList.class
 com\irishrail\model\TrainDelayRecord.class
 com\irishrail\model\DashboardSummary.class
 com\irishrail\service\IrishRailService.class
+com\irishrail\service\AnalyticsAggregateService.class
 com\irishrail\model\TripDelaySummary.class
 com\irishrail\model\Station.class
 com\irishrail\model\RouteStats.class

@@ -4,6 +4,7 @@ import com.irishrail.model.*;
 import com.irishrail.service.DelayTrackingService;
 import com.irishrail.service.IrishRailService;
 import com.irishrail.service.SnapshotEventService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -16,16 +17,22 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Controller
 public class TrainController {
 
     private static final String DEFAULT_STATION = "CNLLY";
+    private static final String HEUSTON_STATION = "HSTON";
 
     private final IrishRailService irishRailService;
     private final DelayTrackingService delayTrackingService;
     private final SnapshotEventService snapshotEventService;
+    private final ConcurrentHashMap<String, CachedPayload> analyticsOverviewCache = new ConcurrentHashMap<>();
+
+    @Value("${irishrail.analytics.overview-cache-ms:10000}")
+    private long analyticsOverviewCacheMs;
 
     public TrainController(IrishRailService irishRailService,
                            DelayTrackingService delayTrackingService,
@@ -48,7 +55,7 @@ public class TrainController {
         LocalDate filterTo   = parseDate(to);
 
         // Live board
-        List<Station>   stations = irishRailService.getAllDartStations()
+        List<Station>   stations = irishRailService.getTrackedStations()
                 .stream()
                 .sorted(Comparator.comparing(Station::getStationDesc))
                 .collect(Collectors.toList());
@@ -137,10 +144,9 @@ public class TrainController {
         LocalDate today           = LocalDate.now();
         LocalDate filterFrom      = allTime ? null : (hasExplicit ? parseDate(from) : today);
         LocalDate filterTo        = allTime ? null : (hasExplicit ? parseDate(to)   : today);
-        boolean   hasStation      = stationCode != null && !stationCode.isBlank()
-                                    && !"OVERVIEW".equalsIgnoreCase(stationCode);
+        boolean   hasStation      = ServiceScope.fromOverviewCode(stationCode) != null;
 
-        List<Station> stations = irishRailService.getAllDartStations()
+        List<Station> stations = irishRailService.getTrackedStations()
                 .stream()
                 .sorted(Comparator.comparing(Station::getStationDesc))
                 .collect(Collectors.toList());
@@ -155,6 +161,7 @@ public class TrainController {
 
         if (hasStation) {
             dashboard    = delayTrackingService.getDashboardSummaryForStation(filterFrom, filterTo, stationCode);
+            allStations  = delayTrackingService.getAllStationRankingForStation(filterFrom, filterTo, stationCode);
             hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
             destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
             top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
@@ -184,7 +191,9 @@ public class TrainController {
         long catBig     = categories.getOrDefault(DelayCategory.BIG_DELAY.getDisplayLabel(),     0L);
         long catExtreme = categories.getOrDefault(DelayCategory.EXTREME_DELAY.getDisplayLabel(), 0L);
 
-        List<RecentDelayEntry> recentDelays = delayTrackingService.getRecentDelayedTrips();
+        List<RecentDelayEntry> recentDelays = hasStation
+                ? delayTrackingService.getRecentDelayedTripsForStation(stationCode)
+                : delayTrackingService.getRecentDelayedTrips();
 
         model.addAttribute("dashboard",            dashboard);
         model.addAttribute("allStations",          allStations);
@@ -197,6 +206,8 @@ public class TrainController {
         model.addAttribute("selectedCode",         hasStation ? stationCode.toUpperCase() : "OVERVIEW");
         model.addAttribute("hasStationFilter",     hasStation);
         model.addAttribute("selectedStationName",  selectedStationName);
+        model.addAttribute("connollyCode",         DEFAULT_STATION);
+        model.addAttribute("heustonCode",          HEUSTON_STATION);
         model.addAttribute("catOnTime",            catOnTime);
         model.addAttribute("catSmall",             catSmall);
         model.addAttribute("catMedium",            catMedium);
@@ -239,7 +250,7 @@ public class TrainController {
     @GetMapping("/api/stations")
     @ResponseBody
     public ResponseEntity<List<Station>> getStations() {
-        return ResponseEntity.ok(irishRailService.getAllDartStations());
+        return ResponseEntity.ok(irishRailService.getTrackedStations());
     }
 
     @GetMapping("/api/analytics/trains")
@@ -275,7 +286,16 @@ public class TrainController {
             @RequestParam(required = false) String to,
             @RequestParam(required = false) String stationCode,
             @RequestParam(required = false, defaultValue = "") String period) {
-        return ResponseEntity.ok(buildAnalyticsPayload(from, to, stationCode, period));
+        String cacheKey = analyticsOverviewCacheKey(from, to, stationCode, period);
+        long now = System.currentTimeMillis();
+        CachedPayload cached = analyticsOverviewCache.get(cacheKey);
+        if (cached != null && now - cached.createdAtMs() <= analyticsOverviewCacheMs) {
+            return ResponseEntity.ok(cached.payload());
+        }
+
+        Map<String, Object> payload = buildAnalyticsPayload(from, to, stationCode, period);
+        analyticsOverviewCache.put(cacheKey, new CachedPayload(payload, now));
+        return ResponseEntity.ok(payload);
     }
 
     @GetMapping("/api/events")
@@ -291,14 +311,28 @@ public class TrainController {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    private record CachedPayload(Map<String, Object> payload, long createdAtMs) {}
+
+    private String analyticsOverviewCacheKey(String from, String to, String stationCode, String period) {
+        String scope = normalizeCachePart(stationCode);
+        if ("OVERVIEW".equalsIgnoreCase(scope)) scope = "";
+        return normalizeCachePart(from) + "|"
+                + normalizeCachePart(to) + "|"
+                + scope.toUpperCase() + "|"
+                + normalizeCachePart(period).toLowerCase();
+    }
+
+    private String normalizeCachePart(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     private Map<String, Object> buildAnalyticsPayload(String from, String to, String stationCode, String period) {
         boolean   allTime    = "all".equalsIgnoreCase(period);
         boolean   hasExplicit = (from != null && !from.isBlank()) || (to != null && !to.isBlank());
         LocalDate today      = LocalDate.now();
         LocalDate filterFrom = allTime ? null : (hasExplicit ? parseDate(from) : today);
         LocalDate filterTo   = allTime ? null : (hasExplicit ? parseDate(to)   : today);
-        boolean   hasStation = stationCode != null && !stationCode.isBlank()
-                               && !"OVERVIEW".equalsIgnoreCase(stationCode);
+        boolean   hasStation = ServiceScope.fromOverviewCode(stationCode) != null;
 
         DashboardSummary       dashboard;
         List<StationStats>     stationRank;
@@ -310,7 +344,7 @@ public class TrainController {
 
         if (hasStation) {
             dashboard    = delayTrackingService.getDashboardSummaryForStation(filterFrom, filterTo, stationCode);
-            stationRank  = Collections.emptyList();
+            stationRank  = delayTrackingService.getAllStationRankingForStation(filterFrom, filterTo, stationCode);
             hourly       = delayTrackingService.getHourlyStatsForStation(filterFrom, filterTo, stationCode);
             top10        = delayTrackingService.getTop10LargestDelaysForStation(filterFrom, filterTo, stationCode);
             destinations = delayTrackingService.getTopDestinationsByDelayForStation(filterFrom, filterTo, stationCode);
@@ -341,7 +375,9 @@ public class TrainController {
         result.put("hourlyAvgDelays", hourly.stream().map(HourlyStats::getAvgDelay).collect(Collectors.toList()));
         result.put("top10Delays",     top10);
         result.put("routeRanking",    routeRanking);
-        result.put("recentDelays",    delayTrackingService.getRecentDelayedTrips());
+        result.put("recentDelays",    hasStation
+                ? delayTrackingService.getRecentDelayedTripsForStation(stationCode)
+                : delayTrackingService.getRecentDelayedTrips());
         result.put("destinations",    destinations);
         result.put("destLabels",      destinations.stream().map(DestinationStats::getDestination).collect(Collectors.toList()));
         result.put("destAvgDelays",   destinations.stream().map(DestinationStats::getAvgDelay).collect(Collectors.toList()));

@@ -11,7 +11,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Irish Rail — Overview</title>
+    <title>IERailMetrics — Overview</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -31,7 +31,9 @@
         body { background: var(--bg-main); color: var(--text-primary); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
 
         .site-header { background: linear-gradient(180deg,#0a1a0f,#0b1a12); border-bottom: 2px solid var(--ir-green); padding: 1rem 0; }
-        .ir-logo { width:44px; height:44px; background:var(--ir-green); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0; }
+        .ir-logo { min-width:160px; height:44px; background:rgba(0,184,79,.14); border:1px solid rgba(0,184,79,.45); border-radius:8px; display:flex; align-items:center; gap:.55rem; justify-content:center; padding:0 .8rem; flex-shrink:0; color:#3ecf73; font-weight:800; letter-spacing:0; }
+        .ir-logo-mark { width:28px; height:28px; background:var(--ir-green); color:#07110c; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:900; }
+        .ir-logo-word { color:var(--text-primary); font-size:1rem; white-space:nowrap; }
 
         .station-select { background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; padding:6px 14px; font-size:.85rem; cursor:pointer; outline:none; transition:border-color .15s; }
         .station-select:focus,.station-select:hover { border-color:var(--ir-green); }
@@ -78,13 +80,22 @@
         .search-box { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 6px 14px; font-size: .85rem; outline: none; transition: border-color .15s; width: 220px; }
         .search-box:focus { border-color: var(--ir-green); }
         .search-box::placeholder { color: var(--text-muted); }
-        .filter-period-bar { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.65rem 1rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+        .filter-period-bar { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:.85rem 1rem 1rem; display:flex; align-items:center; gap:.7rem .75rem; flex-wrap:wrap; margin-bottom:1.5rem; }
+        .period-title { flex:0 0 100%; display:flex; align-items:center; gap:.45rem; color:var(--text-primary); font-size:1rem; font-weight:750; letter-spacing:0; line-height:1.1; }
+        .period-title i { color:var(--ir-green); font-size:1.05rem; }
+        .period-quick-actions { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
         .date-input { background:#0d1822; border:1px solid var(--border); color:var(--text-primary); border-radius:7px; padding:5px 10px; font-size:.82rem; outline:none; transition:border-color .15s; cursor:pointer; }
         .date-input:focus { border-color:var(--ir-green); }
         .date-input::-webkit-calendar-picker-indicator { filter:invert(.6); cursor:pointer; }
         .period-btn { background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:20px; padding:4px 14px; font-size:.78rem; cursor:pointer; text-decoration:none; transition:all .15s; white-space:nowrap; }
         .period-btn:hover { border-color:var(--ir-green); color:var(--text-primary); }
         .period-btn.active { background:rgba(0,154,68,.15); border-color:var(--ir-green); color:#3ecf73; }
+        .period-btn.loading { pointer-events:none; opacity:1; border-color:var(--ir-green); color:#3ecf73; }
+        .period-spinner { width:.85rem; height:.85rem; border:2px solid rgba(62,207,115,.25); border-top-color:#3ecf73; border-radius:50%; animation:spin .7s linear infinite; display:none; vertical-align:-.12rem; }
+        .period-btn.loading .period-spinner { display:inline-block; }
+        .period-btn.loading i { display:none; }
+        .period-apply-btn { background:rgba(0,154,68,.18); border-color:rgba(0,184,79,.65); color:#3ecf73; padding:7px 18px; font-size:.86rem; font-weight:750; box-shadow:0 0 0 1px rgba(0,184,79,.12); }
+        .period-apply-btn:hover { background:rgba(0,184,79,.24); border-color:var(--ir-green); color:#d9ffe8; }
         .active-period-label { font-size:.75rem; color:#3ecf73; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); border-radius:20px; padding:3px 10px; white-space:nowrap; }
 
         .empty-full { text-align:center; padding:6rem 2rem; color:var(--text-muted); }
@@ -92,23 +103,41 @@
 
         .overview-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(0,154,68,.15); border:1px solid rgba(0,154,68,.4); color:#3ecf73; border-radius:20px; padding:3px 12px; font-size:.78rem; font-weight:600; letter-spacing:.04em; }
         #ov-recent-tbody .badge-late { display:inline-block; min-width:60px; text-align:center; }
+        .scope-tabs { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
+        .scope-tab { display:inline-flex; align-items:center; gap:.45rem; background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:.55rem .9rem; font-size:.82rem; font-weight:600; text-decoration:none; transition:all .15s; }
+        .scope-tab:hover { border-color:var(--ir-green); color:var(--text-primary); }
+        .scope-tab.active { background:rgba(0,154,68,.14); border-color:var(--ir-green); color:#3ecf73; }
+        .scope-tab i { font-size:1rem; }
+        .scope-tab.loading { border-color:var(--ir-green); color:#3ecf73; opacity:1 !important; }
+        .scope-spinner { width:.9rem; height:.9rem; border:2px solid rgba(62,207,115,.25); border-top-color:#3ecf73; border-radius:50%; animation:spin .7s linear infinite; display:none; }
+        .scope-tab.loading .scope-spinner { display:inline-block; }
+        .scope-tab.loading i { display:none; }
 
         @media (max-width: 575px) {
             .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
             .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
+            .site-header .d-flex > * { order: 2; }
+            .site-header .ir-logo { order: 1; margin: 0 auto 4px; }
+            .site-header .ir-logo + div { order: 2; flex: 0 0 100%; text-align: center; }
             .site-header .ms-3 { order: 9; flex: 0 0 100%; margin-left: 0 !important; }
             .station-select { width: 100%; }
             .a-stat-val { font-size: 1.4rem; }
             .a-stat-card { padding: .8rem .9rem; }
-            .filter-period-bar { gap: .5rem; padding: .5rem .75rem; }
+            .filter-period-bar { gap: .5rem; padding: .7rem .75rem .8rem; }
+            .period-title { font-size: .95rem; justify-content: center; }
+            .period-quick-actions { flex: 0 0 100%; justify-content: center; gap: .5rem; }
             .period-btn { padding: 3px 10px; font-size: .72rem; }
+            .period-apply-btn { padding: 6px 16px; font-size: .8rem; }
+            .scope-tab { flex:1 1 auto; justify-content:center; padding:.5rem .7rem; }
             .table-scroll table { min-width: 450px; }
             #chart-hourly { height: 220px !important; }
-            .filter-period-bar form { flex: 0 0 100%; margin-left: 0 !important; }
+            .filter-period-bar form { flex: 0 0 100%; margin-left: 0 !important; justify-content: center; }
+            .active-period-label { margin-left: auto; margin-right: auto; }
         }
         @media (min-width: 576px) {
             #chart-hourly { height: 300px; }
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeSlideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes rowSlideIn  { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
         .rank-bar-fill { transition:width .6s cubic-bezier(.25,.8,.25,1) !important; }
@@ -122,16 +151,19 @@
 <header class="site-header">
     <div class="container-fluid px-4">
         <div class="d-flex align-items-center gap-3">
-            <div class="ir-logo"><i class="bi bi-train-front text-white"></i></div>
+            <div class="ir-logo" aria-label="IERailMetrics">
+                <span class="ir-logo-mark">IE</span>
+                <span class="ir-logo-word">IERailMetrics</span>
+            </div>
             <div>
-                <div class="fw-bold fs-5 lh-1"
+                <div id="overview-title" class="fw-bold fs-5 lh-1"
                      th:text="${hasStationFilter} ? 'Overview — ' + ${selectedStationName} : 'Overview — All Stations'">
                     Overview
                 </div>
                 <div style="font-size:.8rem;color:var(--text-muted)">Irish Rail · Network Analytics</div>
             </div>
             <div class="ms-3">
-                <select class="station-select" onchange="changeStation(this.value)">
+                <select class="station-select" id="overview-station-select" onchange="changeStation(this.value)">
                     <option value="OVERVIEW" th:selected="${!hasStationFilter}">Overview — All Stations</option>
                     <option th:each="s : ${stations}"
                             th:value="${s.stationCode}"
@@ -139,54 +171,76 @@
                             th:selected="${s.stationCode == selectedCode}"></option>
                 </select>
             </div>
-            <div class="ms-auto">
-                <span class="overview-badge">
-                    <i class="bi bi-bar-chart-line me-1"></i>
-                    <span th:text="${hasStationFilter} ? 'Station Overview' : 'Network Overview'">Network Overview</span>
-                </span>
-            </div>
+
         </div>
     </div>
 </header>
 
 <main class="container-fluid px-4 py-4">
 
+<nav class="scope-tabs" aria-label="Overview scope">
+    <a href="#" class="scope-tab" data-scope="OVERVIEW" th:classappend="${!hasStationFilter} ? ' active' : ''"
+       onclick="switchScope('OVERVIEW', this); return false;">
+        <span class="scope-spinner" aria-hidden="true"></span><i class="bi bi-diagram-3"></i><span>General</span>
+    </a>
+    <a href="#" class="scope-tab" data-scope="CNLLY" th:classappend="${selectedCode == connollyCode} ? ' active' : ''"
+       onclick="switchScope('CNLLY', this); return false;">
+        <span class="scope-spinner" aria-hidden="true"></span><i class="bi bi-building"></i><span>Connolly</span>
+    </a>
+    <a href="#" class="scope-tab" data-scope="HSTON" th:classappend="${selectedCode == heustonCode} ? ' active' : ''"
+       onclick="switchScope('HSTON', this); return false;">
+        <span class="scope-spinner" aria-hidden="true"></span><i class="bi bi-signpost-split"></i><span>Heuston</span>
+    </a>
+</nav>
+
 <!-- ══════════════ FILTER BAR ══════════════ -->
 <div class="filter-period-bar">
-    <span style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);white-space:nowrap">
-        <i class="bi bi-funnel me-1"></i>Period
-    </span>
+    <div class="period-title">
+        <i class="bi bi-funnel"></i><span>Period</span>
+    </div>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&period=all' : '/overview?period=all'}"
-       class="period-btn" th:classappend="${!hasFilter and !isDefaultFilter} ? ' active' : ''">All time</a>
+    <div class="period-quick-actions">
+        <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&period=all' : '/overview?period=all'}"
+           class="period-btn" data-period-filter="all"
+           th:classappend="${!hasFilter and !isDefaultFilter} ? ' active' : ''">
+            <span class="period-spinner" aria-hidden="true"></span><span class="period-label">All time</span>
+        </a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode : '/overview'}"
-       class="period-btn"
-       th:classappend="${isDefaultFilter or (filterFrom == today and filterTo == today)} ? ' active' : ''">Today</a>
+        <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode : '/overview'}"
+           class="period-btn" data-period-filter="today"
+           th:classappend="${isDefaultFilter or (filterFrom == today and filterTo == today)} ? ' active' : ''">
+            <span class="period-spinner" aria-hidden="true"></span><span class="period-label">Today</span>
+        </a>
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + yesterday + '&to=' + yesterday : '/overview?from=' + yesterday + '&to=' + yesterday}"
-       class="period-btn"
-       th:classappend="${filterFrom == yesterday and filterTo == yesterday} ? ' active' : ''">Yesterday</a>
+        <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + yesterday + '&to=' + yesterday : '/overview?from=' + yesterday + '&to=' + yesterday}"
+           class="period-btn" data-period-filter="yesterday"
+           th:classappend="${filterFrom == yesterday and filterTo == yesterday} ? ' active' : ''">
+            <span class="period-spinner" aria-hidden="true"></span><span class="period-label">Yesterday</span>
+        </a>
+        <!--
+        <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last7from + '&to=' + today : '/overview?from=' + last7from + '&to=' + today}"
+           class="period-btn" data-period-filter="last7"
+           th:classappend="${filterFrom == last7from and filterTo == today} ? ' active' : ''">Last 7 days</a>
+           -->
 
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last7from + '&to=' + today : '/overview?from=' + last7from + '&to=' + today}"
-       class="period-btn"
-       th:classappend="${filterFrom == last7from and filterTo == today} ? ' active' : ''">Last 7 days</a>
-
-    <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last30from + '&to=' + today : '/overview?from=' + last30from + '&to=' + today}"
-       class="period-btn"
-       th:classappend="${filterFrom == last30from and filterTo == today} ? ' active' : ''">Last 30 days</a>
+        <a th:href="${hasStationFilter ? '/overview?stationCode=' + selectedCode + '&from=' + last30from + '&to=' + today : '/overview?from=' + last30from + '&to=' + today}"
+           class="period-btn" data-period-filter="last30"
+           th:classappend="${filterFrom == last30from and filterTo == today} ? ' active' : ''">
+            <span class="period-spinner" aria-hidden="true"></span><span class="period-label">Last 30 days</span>
+        </a>
+    </div>
 
     <form method="get" th:action="@{/overview}" class="d-flex align-items-center gap-2 ms-auto flex-wrap">
-        <input th:if="${hasStationFilter}" type="hidden" name="stationCode" th:value="${selectedCode}">
+        <input id="period-station-code" type="hidden" name="stationCode" th:value="${selectedCode}">
         <input type="date" name="from" class="date-input" th:value="${filterFrom}">
         <span style="color:var(--text-muted);font-size:.8rem">→</span>
         <input type="date" name="to"   class="date-input" th:value="${filterTo}">
-        <button type="submit" class="period-btn" style="background:rgba(0,154,68,.1);border-color:rgba(0,154,68,.4);color:#3ecf73">
-            <i class="bi bi-check2 me-1"></i>Apply
+        <button type="submit" class="period-btn period-apply-btn" data-period-apply>
+            <span class="period-spinner" aria-hidden="true"></span><i class="bi bi-check2 me-1"></i><span class="period-label">Apply</span>
         </button>
     </form>
 
-    <span th:if="${hasFilter}" class="active-period-label">
+    <span id="active-period-label" class="active-period-label" th:style="${hasFilter} ? '' : 'display:none'">
         <i class="bi bi-calendar3 me-1"></i>
         <span th:if="${filterFrom == filterTo}" th:text="${filterFromDisplay}">—</span>
         <span th:if="${filterFrom != filterTo}" th:text="${filterFromDisplay + ' → ' + filterToDisplay}">—</span>
@@ -210,15 +264,19 @@
 ══════════════════════════════════════════ -->
 <div class="section-header">
     <i class="bi bi-speedometer2"></i>
-    <span th:text="${hasStationFilter} ? 'Station Summary — ' + ${selectedStationName} : 'Network Summary'">Network Summary</span>
+    <span id="overview-summary-title" th:text="${hasStationFilter} ? 'Station Summary — ' + ${selectedStationName} : 'Network Summary'">Network Summary</span>
 </div>
 <div class="row g-3 mb-5">
+
+    <!--
     <div class="col-6 col-md-4 col-xl">
         <div class="a-stat-card">
             <div id="ov-total-snaps" class="a-stat-val" th:text="${dashboard.totalSnapshots}">0</div>
             <div class="a-stat-lbl"><i class="bi bi-database me-1"></i>Total Snapshots</div>
         </div>
     </div>
+    -->
+
     <div class="col-6 col-md-4 col-xl">
         <div class="a-stat-card" style="border-color:rgba(99,179,237,.25)">
             <div id="ov-unique-trips" class="a-stat-val" style="color:#63b3ed" th:text="${dashboard.uniqueTrips}">0</div>
@@ -400,7 +458,7 @@
                             <th>Total Delay</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="ov-route-tbody">
                         <tr th:each="r, iter : ${routeRanking}">
                             <td style="font-size:.78rem" th:text="${iter.index + 1}">1</td>
                             <td style="font-weight:500" th:text="${r.origin}">—</td>
@@ -513,15 +571,18 @@ function numUpdate(el, newVal, suffix) {
 }
 
 /* ── Station navigation ──────────────────────────────────────────────── */
-function changeStation(code) {
+function switchScope(code, clickedTab) {
     const p = new URLSearchParams(window.location.search);
     p.delete('stationCode');
-    if (code === 'OVERVIEW') {
-        window.location.href = '/overview' + (p.toString() ? '?' + p : '');
-    } else {
-        p.set('stationCode', code);
-        window.location.href = '/overview?' + p;
-    }
+    if (code !== 'OVERVIEW') p.set('stationCode', code);
+
+    const nextUrl = '/overview' + (p.toString() ? '?' + p : '');
+    loadOverviewUrl(nextUrl, clickedTab, 'scope').catch(() => { window.location.href = nextUrl; });
+}
+
+function changeStation(code) {
+    const tab = document.querySelector(`.scope-tab[data-scope="${code}"]`);
+    switchScope(code, tab);
 }
 
 /* ── Station search ──────────────────────────────────────────────────── */
@@ -665,17 +726,199 @@ if (ctxC && (_catSmall + _catMedium + _catBig + _catExtreme) > 0) {
 
 /* ── Auto-refresh (every 60 s) ───────────────────────────────────────── */
 let _ovRefreshing = false;
+let _periodNavigationPending = false;
+let _overviewAbortController = null;
+let _overviewRequestSeq = 0;
+
+async function fetchOverviewPayload(search, signal) {
+    const res = await fetch('/api/analytics/overview' + (search ? '?' + search : ''), { signal });
+    if (!res.ok) throw new Error(res.statusText);
+    return res.json();
+}
+
 async function refreshOverview() {
-    if (_ovRefreshing) return;
+    if (_ovRefreshing || _periodNavigationPending) return;
     _ovRefreshing = true;
     try {
         const p = new URLSearchParams(window.location.search);
-        const res = await fetch('/api/analytics/overview' + (p.toString() ? '?' + p : ''));
-        if (!res.ok) return;
-        const d = await res.json();
+        const d = await fetchOverviewPayload(p.toString());
         _applyOverview(d);
     } catch (e) { console.error('Overview refresh:', e); }
     finally { _ovRefreshing = false; }
+}
+
+async function loadOverviewUrl(url, clickedButton, loadingType) {
+    const target = new URL(url, window.location.origin);
+    const nextPath = target.pathname + target.search;
+    if (nextPath === window.location.pathname + window.location.search) return;
+
+    if (_overviewAbortController) _overviewAbortController.abort();
+    const requestId = ++_overviewRequestSeq;
+    _overviewAbortController = new AbortController();
+
+    const previous = window.location.href;
+    _periodNavigationPending = true;
+    window.history.pushState({}, '', target.pathname + target.search);
+    setOverviewLoading(clickedButton, true, loadingType);
+    try {
+        const d = await fetchOverviewPayload(target.searchParams.toString(), _overviewAbortController.signal);
+        if (requestId !== _overviewRequestSeq) return;
+        _applyOverview(d);
+        updateOverviewControls(target.searchParams, clickedButton);
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        window.history.pushState({}, '', previous);
+        throw e;
+    } finally {
+        if (requestId === _overviewRequestSeq) {
+            setOverviewLoading(clickedButton, false, loadingType);
+            _periodNavigationPending = false;
+            _overviewAbortController = null;
+        }
+    }
+}
+
+function setOverviewLoading(btn, loading, loadingType) {
+    setScopeLoading(btn, loading, loadingType === 'scope');
+    setPeriodLoading(btn, loading, loadingType === 'period');
+}
+
+function setScopeLoading(btn, loading, isScopeLoading) {
+    document.querySelectorAll('.scope-tab').forEach(tab => {
+        tab.style.pointerEvents = loading ? 'none' : '';
+        tab.style.opacity = loading ? '.65' : '';
+    });
+    const selector = document.getElementById('overview-station-select');
+    if (selector) selector.disabled = loading;
+
+    if (!isScopeLoading || !btn) return;
+    btn.classList.toggle('loading', loading);
+    const label = btn.querySelector('span:last-child');
+    if (label) {
+        if (loading) {
+            btn.dataset.originalLabel = label.textContent;
+            label.textContent = 'Loading...';
+        } else if (btn.dataset.originalLabel) {
+            label.textContent = btn.dataset.originalLabel;
+            delete btn.dataset.originalLabel;
+        }
+    }
+}
+
+function setPeriodLoading(btn, loading, isPeriodLoading) {
+    document.querySelectorAll('[data-period-filter], [data-period-apply]').forEach(el => {
+        el.style.pointerEvents = loading ? 'none' : '';
+        el.style.opacity = loading ? '.65' : '';
+        if ('disabled' in el) el.disabled = loading;
+    });
+
+    document.querySelectorAll('.date-input').forEach(el => {
+        el.disabled = loading;
+    });
+
+    if (isPeriodLoading && btn) {
+        btn.classList.toggle('loading', loading);
+        const label = btn.querySelector('.period-label');
+        if (label) {
+            if (loading) {
+                btn.dataset.originalLabel = label.textContent;
+                label.textContent = 'Loading...';
+            } else if (btn.dataset.originalLabel) {
+                label.textContent = btn.dataset.originalLabel;
+                delete btn.dataset.originalLabel;
+            }
+        }
+    }
+}
+
+function updateOverviewControls(params, activeButton) {
+    updateScopeControls(params.get('stationCode') || 'OVERVIEW');
+    updatePeriodControls(params, activeButton);
+}
+
+function updateScopeControls(code) {
+    const selectedCode = code && code !== 'OVERVIEW' ? code : 'OVERVIEW';
+    const selector = document.getElementById('overview-station-select');
+    const selectedName = selector
+        ? (selector.querySelector(`option[value="${selectedCode}"]`)?.textContent || selectedCode)
+        : selectedCode;
+    const isStation = selectedCode !== 'OVERVIEW';
+
+    if (selector) selector.value = selectedCode;
+    const hidden = document.getElementById('period-station-code');
+    if (hidden) hidden.value = selectedCode;
+
+    document.querySelectorAll('.scope-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.scope === selectedCode);
+    });
+
+    const title = document.getElementById('overview-title');
+    if (title) title.textContent = isStation ? `Overview — ${selectedName}` : 'Overview — All Stations';
+
+    const summaryTitle = document.getElementById('overview-summary-title');
+    if (summaryTitle) summaryTitle.textContent = isStation ? `Station Summary — ${selectedName}` : 'Network Summary';
+}
+
+function updatePeriodControls(params, activeButton) {
+    document.querySelectorAll('[data-period-filter]').forEach(btn => btn.classList.remove('active'));
+    const activePeriodButton = activeButton && activeButton.matches('[data-period-filter]')
+        ? activeButton
+        : resolveActivePeriodButton(params);
+    if (activePeriodButton) activePeriodButton.classList.add('active');
+
+    const from = params.get('from') || '';
+    const to = params.get('to') || '';
+    const fromInput = document.querySelector('input[name="from"]');
+    const toInput = document.querySelector('input[name="to"]');
+    if (fromInput) fromInput.value = from;
+    if (toInput) toInput.value = to;
+
+    updateActivePeriodLabel(from, to);
+}
+
+function resolveActivePeriodButton(params) {
+    const period = params.get('period') || '';
+    const from = params.get('from') || '';
+    const to = params.get('to') || '';
+    const today = isoDateOffset(0);
+    const yesterday = isoDateOffset(-1);
+    const last30From = isoDateOffset(-29);
+
+    if (period.toLowerCase() === 'all') return document.querySelector('[data-period-filter="all"]');
+    if (!from && !to) return document.querySelector('[data-period-filter="today"]');
+    if (from === today && to === today) return document.querySelector('[data-period-filter="today"]');
+    if (from === yesterday && to === yesterday) return document.querySelector('[data-period-filter="yesterday"]');
+    if (from === last30From && to === today) return document.querySelector('[data-period-filter="last30"]');
+    return null;
+}
+
+function isoDateOffset(offsetDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function updateActivePeriodLabel(from, to) {
+    const label = document.getElementById('active-period-label');
+    if (!label) return;
+    if (!from && !to) {
+        label.style.display = 'none';
+        return;
+    }
+    const displayFrom = formatIsoDate(from);
+    const displayTo = formatIsoDate(to || from);
+    label.style.display = '';
+    label.innerHTML = `<i class="bi bi-calendar3 me-1"></i>${displayFrom === displayTo ? displayFrom : `${displayFrom} â†’ ${displayTo}`}`;
+}
+
+function formatIsoDate(value) {
+    if (!value) return '';
+    const parts = value.split('-');
+    if (parts.length !== 3) return value;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
 }
 
 function _ovSetText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
@@ -700,7 +943,7 @@ function _applyOverview(d) {
         const medals = ['🥇','🥈','🥉'];
         tbody.innerHTML = (d.stationRank || []).map((s, i) => `<tr data-name="${(s.stationName||'').toLowerCase()}">
             <td style="font-size:.8rem">${i < 3 ? `<span style="font-size:1rem">${medals[i]}</span>` : i+1}</td>
-            <td><a href="/overview?stationCode=${s.stationCode}" style="color:var(--text-primary);text-decoration:none;font-weight:500">${s.stationName}</a>
+            <td><span style="color:var(--text-primary);font-weight:500">${s.stationName}</span>
                 <span style="color:var(--text-muted);font-size:.72rem;margin-left:4px">${s.stationCode}</span></td>
             <td>${s.totalTrips}</td>
             <td style="color:#f87171">${s.delayedTrips}</td>
@@ -738,6 +981,21 @@ function _applyOverview(d) {
         <td style="font-size:.78rem;white-space:nowrap">${r.capturedAt||'—'}</td>
     </tr>`).join('') || '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No delayed trips</td></tr>';
 
+    const routeTb = document.getElementById('ov-route-tbody');
+    if (routeTb) routeTb.innerHTML = (d.routeRanking || []).map((r, i) => `<tr>
+        <td style="font-size:.78rem">${i + 1}</td>
+        <td style="font-weight:500">${r.origin || 'â€”'}</td>
+        <td><span>${r.destination || 'â€”'}</span></td>
+        <td>${r.totalTrips}</td>
+        <td style="color:#f87171">${r.delayedTrips}</td>
+        <td><div class="d-flex align-items-center gap-2">
+            <span class="rank-bar-track"><span class="rank-bar-fill d-block" style="width:${r.delayProbability}%;background:${r.delayProbabilityBarColor};height:100%"></span></span>
+            <span style="font-size:.82rem;min-width:40px">${r.delayProbability}%</span>
+        </div></td>
+        <td><span class="badge-late">${r.averageDelay} min</span></td>
+        <td style="color:#f59e0b;font-size:.82rem;white-space:nowrap">${r.totalAccumulatedDelay} min</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="text-center py-4" style="color:var(--text-muted)">No route data yet</td></tr>';
+
     // Charts
     if (_ovHourlyChart && d.hourlyLabels && d.hourlyLabels.length) {
         _ovHourlyChart.data.labels = d.hourlyLabels;
@@ -755,7 +1013,7 @@ function _applyOverview(d) {
         _ovCatChart.data.datasets[0].data = [d.catSmall, d.catMedium, d.catBig, d.catExtreme];
         _ovCatChart.update();
     }
-    ['ov-recent-tbody','ov-top10-tbody','station-tbody'].forEach(id => staggerRows(document.getElementById(id)));
+    ['ov-recent-tbody','ov-top10-tbody','station-tbody','ov-route-tbody'].forEach(id => staggerRows(document.getElementById(id)));
     animateBars();
 }
 (function connectSSE() {
@@ -770,12 +1028,46 @@ document.addEventListener('DOMContentLoaded', () => {
     animateBars();
     ['ov-recent-tbody','ov-top10-tbody','station-tbody'].forEach(id => staggerRows(document.getElementById(id)));
     setupReveal();
+    setupFastPeriodFilters();
 });
+
+function setupFastPeriodFilters() {
+    document.querySelectorAll('[data-period-filter]').forEach(btn => {
+        btn.addEventListener('click', event => {
+            event.preventDefault();
+            const target = new URL(btn.href, window.location.origin);
+            const current = new URLSearchParams(window.location.search);
+            const currentScope = current.get('stationCode');
+            if (currentScope && currentScope !== 'OVERVIEW') target.searchParams.set('stationCode', currentScope);
+            else target.searchParams.delete('stationCode');
+            loadOverviewUrl(target.pathname + target.search, btn, 'period').catch(() => { window.location.href = target.pathname + target.search; });
+        });
+    });
+
+    const form = document.querySelector('.filter-period-bar form');
+    if (form) {
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            const params = new URLSearchParams(window.location.search);
+            const station = form.querySelector('input[name="stationCode"]')?.value;
+            const from = form.querySelector('input[name="from"]')?.value;
+            const to = form.querySelector('input[name="to"]')?.value;
+            params.delete('period');
+            params.delete('from');
+            params.delete('to');
+            if (station && station !== 'OVERVIEW') params.set('stationCode', station);
+            else params.delete('stationCode');
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            loadOverviewUrl('/overview' + (params.toString() ? '?' + params : ''), form.querySelector('[data-period-apply]'), 'period')
+                .catch(() => form.submit());
+        });
+    }
+}
 </script>
 <!-- ══════════════════════════════════════════
      SECTION 2 — FULL STATION RANKING
 ══════════════════════════════════════════ -->
-<div th:if="${!hasStationFilter}">
 <div style="max-width:1880px;margin-left:auto;margin-right:auto">
 <div class="section-header">
     <i class="bi bi-trophy"></i> Station Ranking — All Stations
@@ -785,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div style="font-size:.82rem;color:var(--text-muted)"
-         th:text="${allStations.size()} + ' stations tracked'">0 stations tracked</div>
+         th:text="${allStations.size()} + ' stations in scope'">0 stations in scope</div>
     <input class="search-box" type="text" placeholder="Search station..."
            oninput="filterStations(this.value)" autocomplete="off">
 </div>
@@ -817,9 +1109,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span th:if="${iter.index >= 3}" th:text="${iter.index + 1}"></span>
                 </td>
                 <td>
-                    <a th:href="'/overview?stationCode=' + ${s.stationCode}"
-                       style="color:var(--text-primary);text-decoration:none;font-weight:500"
-                       th:text="${s.stationName}">—</a>
+                    <span style="color:var(--text-primary);font-weight:500"
+                          th:text="${s.stationName}"></span>
                     <span style="color:var(--text-muted);font-size:.72rem;margin-left:4px"
                           th:text="${s.stationCode}"></span>
                 </td>
@@ -849,7 +1140,6 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 </div>
 </div><!-- /max-width container -->
-</div><!-- /th:if !hasStationFilter -->
 
 </body>
 </html>

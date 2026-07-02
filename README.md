@@ -28,9 +28,11 @@ The API returns **XML**, which is deserialized using Jackson XML. Each response 
 Data is collected automatically every **30 seconds** during DART operating hours (06:00–00:30), using Spring's `@Scheduled`. Each snapshot of a train at a station is persisted to the database to build the analytics history.
 
 Filters applied during collection:
-- Only DART stations (`StationType=D`)
+- The live overview exposes configured service tabs (`irishrail.tracked-station-codes`)
+- Collection scans the available station list so each service tab can rank all stations seen in that scope
 - Trains of type `bus` are discarded
-- Trains whose origin or destination contains "Heuston" are discarded (intercity line, not DART)
+- Connolly scope excludes trains whose origin or destination contains "Heuston"
+- Heuston scope stores trains related to Heuston separately from Connolly analytics
 
 ---
 
@@ -83,7 +85,12 @@ spring.datasource.username=postgres
 spring.datasource.password=postgres
 
 irishrail.api.all-stations-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=D
+irishrail.api.station-list-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=
 irishrail.api.station-data-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML_WithNumMins?NumMins=90&StationCode=
+irishrail.connolly.collection-station-types=D
+irishrail.heuston.collection-station-types=M,S
+irishrail.tracked-station-codes=CNLLY,HSTON
+irishrail.analytics.aggregates.backfill-on-startup=true
 
 irishrail.retention.days=90
 ```
@@ -96,8 +103,9 @@ irishrail.retention.days=90
 |---|---|
 | `/` | Redirects to today's overview |
 | `/get?stationCode=XXXX` | Live departure board for a station + analytics |
-| `/overview` | Analytics for the full DART network |
-| `/overview?stationCode=XXXX` | Analytics filtered by station |
+| `/overview` | Analytics for all collected stations |
+| `/overview?stationCode=CNLLY` | Connolly analytics only |
+| `/overview?stationCode=HSTON` | Heuston analytics only |
 
 ---
 
@@ -119,7 +127,8 @@ irishrail.retention.days=90
 | Table | Description |
 |---|---|
 | `trip` | Each unique journey (train_code + train_date) |
-| `trip_station_snapshot` | Snapshots of each train at each station over time |
+| `trip_station_snapshot` | Snapshots of each train at each station over time, tagged by service scope |
+| `daily_station_route_metrics` | Precomputed daily aggregates by service scope, station, origin and destination |
 | `train_delay_records` | Historical record of captured delays |
 
 ---

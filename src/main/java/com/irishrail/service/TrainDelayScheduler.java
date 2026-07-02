@@ -2,6 +2,7 @@ package com.irishrail.service;
 
 import com.irishrail.model.Station;
 import com.irishrail.model.TrainInfo;
+import com.irishrail.model.ServiceScope;
 import com.irishrail.repository.TripRepository;
 import com.irishrail.repository.TripStationSnapshotRepository;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ public class TrainDelayScheduler {
     private final TripStationSnapshotRepository snapshotRepository;
     private final TripRepository                tripRepository;
     private final SnapshotEventService          snapshotEventService;
+    private final AnalyticsAggregateService     analyticsAggregateService;
 
     @Value("${irishrail.retention.days:90}")
     private int retentionDays;
@@ -38,12 +40,14 @@ public class TrainDelayScheduler {
                                DelayTrackingService delayTrackingService,
                                TripStationSnapshotRepository snapshotRepository,
                                TripRepository tripRepository,
-                               SnapshotEventService snapshotEventService) {
+                               SnapshotEventService snapshotEventService,
+                               AnalyticsAggregateService analyticsAggregateService) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
         this.snapshotRepository   = snapshotRepository;
         this.tripRepository       = tripRepository;
         this.snapshotEventService = snapshotEventService;
+        this.analyticsAggregateService = analyticsAggregateService;
     }
 
     // ── collector: every 30 s during DART operating hours (06:00–00:30) ───────
@@ -52,24 +56,47 @@ public class TrainDelayScheduler {
     public void collectAllStations() {
         if (!isDartHours()) return;
 
-        List<Station> stations = irishRailService.getAllDartStations();
-        if (stations.isEmpty()) {
+        List<Station> connollyStations = irishRailService.getConnollyCollectionStations();
+        List<Station> heustonStations = irishRailService.getHeustonCollectionStations();
+        if (connollyStations.isEmpty() && heustonStations.isEmpty()) {
             log.warn("Scheduled collect: no stations returned from API");
             return;
         }
         int totalSaved = 0;
-        for (Station station : stations) {
-            List<TrainInfo> trains = irishRailService.getTrainsByStation(station.getStationCode());
-            List<TrainInfo> changed = trains.stream()
-                    .filter(this::hasChanged)
+        int stationChecks = 0;
+
+        for (Station station : connollyStations) {
+            stationChecks++;
+            List<TrainInfo> connollyTrains = irishRailService.getTrainsByStation(station.getStationCode(), false);
+            List<TrainInfo> changedConnolly = connollyTrains.stream()
+                    .filter(t -> hasChanged(t, ServiceScope.CONNOLLY))
                     .collect(Collectors.toList());
-            if (!changed.isEmpty()) {
-                delayTrackingService.saveAll(changed);
-                totalSaved += changed.size();
+            if (!changedConnolly.isEmpty()) {
+                delayTrackingService.saveAll(changedConnolly, ServiceScope.CONNOLLY);
+                totalSaved += changedConnolly.size();
+            }
+        }
+
+        for (Station station : heustonStations) {
+            stationChecks++;
+            List<TrainInfo> heustonTrains = irishRailService.getTrainsByStation(station.getStationCode(), true).stream()
+                    .filter(IrishRailService::isHeustonRelated)
+                    .collect(Collectors.toList());
+            if ("HSTON".equalsIgnoreCase(station.getStationCode())) {
+                heustonTrains = irishRailService.getTrainsByStation(station.getStationCode(), true);
+            }
+            List<TrainInfo> changedHeuston = heustonTrains.stream()
+                    .filter(t -> hasChanged(t, ServiceScope.HEUSTON))
+                    .collect(Collectors.toList());
+            if (!changedHeuston.isEmpty()) {
+                delayTrackingService.saveAll(changedHeuston, ServiceScope.HEUSTON);
+                totalSaved += changedHeuston.size();
             }
         }
         if (totalSaved > 0) {
-            log.info("Collect: {} snapshots saved across {} stations", totalSaved, stations.size());
+            log.info("Collect: {} snapshots saved across {} station checks ({} Connolly, {} Heuston)",
+                    totalSaved, stationChecks, connollyStations.size(), heustonStations.size());
+            analyticsAggregateService.refreshDate(LocalDateTime.now().toLocalDate());
         }
         snapshotEventService.broadcast();
     }
@@ -81,10 +108,11 @@ public class TrainDelayScheduler {
     public void cleanup() {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(retentionDays);
         int snapshots = snapshotRepository.deleteByCapturedAtBefore(cutoff);
+        int aggregates = analyticsAggregateService.deleteBefore(cutoff.toLocalDate());
         int trips     = tripRepository.deleteOrphans();
         lastSeen.clear();
-        log.info("Cleanup: {} snapshots and {} orphan trips deleted (older than {}), state map cleared",
-                snapshots, trips, cutoff.toLocalDate());
+        log.info("Cleanup: {} snapshots, {} aggregate rows and {} orphan trips deleted (older than {}), state map cleared",
+                snapshots, aggregates, trips, cutoff.toLocalDate());
     }
 
     // ── DART hours check (06:00–00:30, spans midnight) ───────────────────────
@@ -97,8 +125,9 @@ public class TrainDelayScheduler {
 
     // ── state-change filter ───────────────────────────────────────────────────
 
-    private boolean hasChanged(TrainInfo t) {
-        String key = t.getTrainCode()  + "|"
+    private boolean hasChanged(TrainInfo t, String scope) {
+        String key = scope + "|"
+                   + t.getTrainCode()  + "|"
                    + t.getStationCode() + "|"
                    + t.getTrainDate()   + "|"
                    + t.getSchDepart();

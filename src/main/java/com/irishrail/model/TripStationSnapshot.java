@@ -19,6 +19,7 @@ public class TripStationSnapshot {
 
     private String stationCode;
     private String stationFullName;
+    private String serviceScope;
     private String schDepart;
     private String schArrival;
     private String expDepart;
@@ -36,6 +37,8 @@ public class TripStationSnapshot {
     public void setStationCode(String v) { this.stationCode = v; }
     public String getStationFullName() { return stationFullName; }
     public void setStationFullName(String v) { this.stationFullName = v; }
+    public String getServiceScope() { return serviceScope; }
+    public void setServiceScope(String v) { this.serviceScope = v; }
     public String getSchDepart() { return schDepart; }
     public void setSchDepart(String v) { this.schDepart = v; }
     public String getSchArrival() { return schArrival; }

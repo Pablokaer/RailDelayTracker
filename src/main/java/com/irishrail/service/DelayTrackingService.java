@@ -18,20 +18,24 @@ public class DelayTrackingService {
 
     private static final LocalDateTime EPOCH       = LocalDateTime.of(2000, 1, 1, 0, 0);
     private static final int           DELAYED_MIN = DelayCategory.delayedThreshold();
+    private static final int           MAX_STAT_DELAY = DelayLimits.MAX_STAT_DELAY_MINUTES;
 
     private final TripRepository                tripRepository;
     private final TripStationSnapshotRepository snapshotRepository;
+    private final AnalyticsAggregateService     analyticsAggregateService;
 
     public DelayTrackingService(TripRepository tripRepository,
-                                TripStationSnapshotRepository snapshotRepository) {
+                                TripStationSnapshotRepository snapshotRepository,
+                                AnalyticsAggregateService analyticsAggregateService) {
         this.tripRepository     = tripRepository;
         this.snapshotRepository = snapshotRepository;
+        this.analyticsAggregateService = analyticsAggregateService;
     }
 
     // ── write ─────────────────────────────────────────────────────────────────
 
     @Transactional
-    public void saveAll(List<TrainInfo> trains) {
+    public void saveAll(List<TrainInfo> trains, String serviceScope) {
         if (trains == null || trains.isEmpty()) return;
         LocalDateTime now = LocalDateTime.now();
         for (TrainInfo t : trains) {
@@ -51,6 +55,7 @@ public class DelayTrackingService {
             snapshot.setTrip(trip);
             snapshot.setStationCode(t.getStationCode());
             snapshot.setStationFullName(t.getStationFullName());
+            snapshot.setServiceScope(serviceScope);
             snapshot.setSchDepart(t.getSchDepart());
             snapshot.setSchArrival(t.getSchArrival());
             snapshot.setExpDepart(t.getExpDepart());
@@ -66,55 +71,33 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public DashboardSummary getDashboardSummary(LocalDate from, LocalDate to) {
-        LocalDateTime f = resolveFrom(from);
-        LocalDateTime t = resolveTo(to);
-        long total   = snapshotRepository.countByPeriod(f, t);
-        long unique  = total > 0 ? snapshotRepository.countUniqueTrips(f, t)                        : 0L;
-        long delayed = total > 0 ? snapshotRepository.countDelayedUniqueTrips(f, t, DELAYED_MIN)    : 0L;
-        Double avg   = total > 0 ? snapshotRepository.findAvgPeakDelay(f, t, DELAYED_MIN)           : null;
-        Integer max  = total > 0 ? snapshotRepository.findMaxDelay(f, t)                            : null;
-        return new DashboardSummary(
-                total, unique, delayed,
-                avg != null ? avg : 0.0,
-                max != null ? max : 0
-        );
+        return analyticsAggregateService.dashboard(from, to);
     }
 
     // ── station ranking — top 15 ──────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<StationStats> getStationRanking(LocalDate from, LocalDate to) {
-        return snapshotRepository.findStationStatsByTrips(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
-                .map(r -> new StationStats(
-                        (String) r[0], (String) r[1],
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue(),
-                        ((Number) r[5]).longValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.stationRanking(from, to, true);
     }
 
     // ── station ranking — all stations ────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<StationStats> getAllStationRanking(LocalDate from, LocalDate to) {
-        return snapshotRepository.findAllStationStats(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
-                .map(r -> new StationStats(
-                        (String) r[0], (String) r[1],
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue(),
-                        ((Number) r[5]).longValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.stationRanking(from, to, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StationStats> getAllStationRankingForStation(LocalDate from, LocalDate to, String stationCode) {
+        return analyticsAggregateService.stationRankingForScope(from, to, stationCode, false);
     }
 
     // ── hourly analysis ───────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<HourlyStats> getHourlyStats(LocalDate from, LocalDate to) {
-        return snapshotRepository.findHourlyStats(resolveFrom(from), resolveTo(to)).stream()
+        return snapshotRepository.findHourlyStatsForScopes(resolveFrom(from), resolveTo(to), analyticsAggregateService.serviceScopes(), MAX_STAT_DELAY).stream()
                 .map(r -> new HourlyStats(
                         ((Number) r[0]).intValue(),
                         ((Number) r[1]).longValue(),
@@ -128,7 +111,7 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<TripDelaySummary> getTop10LargestDelays(LocalDate from, LocalDate to) {
-        return snapshotRepository.findTop10TripsByPeakDelay(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
+        return snapshotRepository.findTop10TripsByPeakDelayForScopes(resolveFrom(from), resolveTo(to), analyticsAggregateService.serviceScopes(), DELAYED_MIN, MAX_STAT_DELAY).stream()
                 .map(r -> new TripDelaySummary(
                         (String) r[0], (String) r[1], (String) r[2], (String) r[3],
                         (String) r[4], (String) r[5], (String) r[6], (String) r[7],
@@ -142,33 +125,14 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<DestinationStats> getTopDestinationsByDelay(LocalDate from, LocalDate to) {
-        return snapshotRepository.findTopDestinationsByAvgDelay(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
-                .map(r -> new DestinationStats(
-                        (String) r[0],
-                        ((Number) r[1]).longValue(),
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).doubleValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.destinations(from, to, null);
     }
 
     // ── delay categories ──────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public Map<String, Long> getDelayCategories(LocalDate from, LocalDate to) {
-        List<Object> peaks = snapshotRepository.findAllPeakDelaysAboveThreshold(
-                resolveFrom(from), resolveTo(to), DELAYED_MIN);
-
-        Map<String, Long> dist = new LinkedHashMap<>();
-        for (DelayCategory cat : DelayCategory.values()) {
-            if (cat.isDelayed()) dist.put(cat.getDisplayLabel(), 0L);
-        }
-        for (Object o : peaks) {
-            if (o == null) continue;
-            DelayCategory cat = DelayCategory.of(((Number) o).intValue());
-            if (cat.isDelayed()) dist.merge(cat.getDisplayLabel(), 1L, Long::sum);
-        }
-        return dist;
+        return analyticsAggregateService.delayCategories(from, to, null);
     }
 
     // ── daily delays ──────────────────────────────────────────────────────────
@@ -176,7 +140,7 @@ public class DelayTrackingService {
     @Transactional(readOnly = true)
     public Map<String, Long> getDailyDelays(LocalDate from, LocalDate to) {
         Map<String, Long> result = new LinkedHashMap<>();
-        snapshotRepository.findDailyDelaysByTrips(resolveFrom(from), resolveTo(to), DELAYED_MIN)
+        snapshotRepository.findDailyDelaysByTrips(resolveFrom(from), resolveTo(to), DELAYED_MIN, MAX_STAT_DELAY)
                           .forEach(r -> result.put((String) r[0], ((Number) r[1]).longValue()));
         return result;
     }
@@ -185,19 +149,12 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public DashboardSummary getDashboardSummaryForStation(LocalDate from, LocalDate to, String stationCode) {
-        LocalDateTime f = resolveFrom(from);
-        LocalDateTime t = resolveTo(to);
-        long total   = snapshotRepository.countByPeriodAndStation(f, t, stationCode);
-        long unique  = total > 0 ? snapshotRepository.countUniqueTripsForStation(f, t, stationCode)                        : 0L;
-        long delayed = total > 0 ? snapshotRepository.countDelayedUniqueTripsForStation(f, t, stationCode, DELAYED_MIN)    : 0L;
-        Double avg   = total > 0 ? snapshotRepository.findAvgPeakDelayForStation(f, t, stationCode, DELAYED_MIN)           : null;
-        Integer max  = total > 0 ? snapshotRepository.findMaxDelayForStation(f, t, stationCode)                            : null;
-        return new DashboardSummary(total, unique, delayed, avg != null ? avg : 0.0, max != null ? max : 0);
+        return analyticsAggregateService.dashboardForStation(from, to, stationCode);
     }
 
     @Transactional(readOnly = true)
     public List<HourlyStats> getHourlyStatsForStation(LocalDate from, LocalDate to, String stationCode) {
-        return snapshotRepository.findHourlyStatsForStation(resolveFrom(from), resolveTo(to), stationCode).stream()
+        return snapshotRepository.findHourlyStatsForScope(resolveFrom(from), resolveTo(to), serviceScope(stationCode), MAX_STAT_DELAY).stream()
                 .map(r -> new HourlyStats(
                         ((Number) r[0]).intValue(),
                         ((Number) r[1]).longValue(),
@@ -209,7 +166,7 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<TripDelaySummary> getTop10LargestDelaysForStation(LocalDate from, LocalDate to, String stationCode) {
-        return snapshotRepository.findTop10TripsByPeakDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
+        return snapshotRepository.findTop10TripsByPeakDelayForScope(resolveFrom(from), resolveTo(to), serviceScope(stationCode), DELAYED_MIN, MAX_STAT_DELAY).stream()
                 .map(r -> new TripDelaySummary(
                         (String) r[0], (String) r[1], (String) r[2], (String) r[3],
                         (String) r[4], (String) r[5], (String) r[6], (String) r[7],
@@ -221,37 +178,33 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<DestinationStats> getTopDestinationsByDelayForStation(LocalDate from, LocalDate to, String stationCode) {
-        return snapshotRepository.findTopDestinationsByAvgDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
-                .map(r -> new DestinationStats(
-                        (String) r[0],
-                        ((Number) r[1]).longValue(),
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).doubleValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.destinations(from, to, stationCode);
     }
 
     @Transactional(readOnly = true)
     public Map<String, Long> getDelayCategoriesForStation(LocalDate from, LocalDate to, String stationCode) {
-        List<Object> peaks = snapshotRepository.findAllPeakDelaysAboveThresholdForStation(
-                resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN);
-        Map<String, Long> dist = new LinkedHashMap<>();
-        for (DelayCategory cat : DelayCategory.values()) {
-            if (cat.isDelayed()) dist.put(cat.getDisplayLabel(), 0L);
-        }
-        for (Object o : peaks) {
-            if (o == null) continue;
-            DelayCategory cat = DelayCategory.of(((Number) o).intValue());
-            if (cat.isDelayed()) dist.merge(cat.getDisplayLabel(), 1L, Long::sum);
-        }
-        return dist;
+        return analyticsAggregateService.delayCategories(from, to, stationCode);
     }
 
     // ── recent delayed trips (one per trip, deduped) ─────────────────────────
 
     @Transactional(readOnly = true)
     public List<RecentDelayEntry> getRecentDelayedTrips() {
-        return snapshotRepository.findTop5RecentDelaysPerTrip(DELAYED_MIN).stream()
+        return snapshotRepository.findTop5RecentDelaysPerTripForScopes(analyticsAggregateService.serviceScopes(), DELAYED_MIN, MAX_STAT_DELAY).stream()
+                .map(r -> new RecentDelayEntry(
+                        (String) r[0],
+                        (String) r[1],
+                        ((Number) r[2]).intValue(),
+                        formatCapturedAt(r[3]),
+                        (String) r[4],
+                        (String) r[5]
+                ))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<RecentDelayEntry> getRecentDelayedTripsForStation(String stationCode) {
+        return snapshotRepository.findTop5RecentDelaysPerTripForScope(serviceScope(stationCode), DELAYED_MIN, MAX_STAT_DELAY).stream()
                 .map(r -> new RecentDelayEntry(
                         (String) r[0],
                         (String) r[1],
@@ -267,7 +220,7 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<TrainDelaySummary> getTopDelayedTrains(int limit) {
-        return snapshotRepository.findTopDelayedTrainsByTrips(DELAYED_MIN)
+        return snapshotRepository.findTopDelayedTrainsByTrips(DELAYED_MIN, MAX_STAT_DELAY)
                 .stream()
                 .map(r -> new TrainDelaySummary(
                         (String) r[0],
@@ -280,35 +233,19 @@ public class DelayTrackingService {
 
     @Transactional(readOnly = true)
     public List<TripStationSnapshot> getRecentDelays() {
-        return snapshotRepository.findTop50ByLateMinutesGreaterThanOrderByCapturedAtDesc(DELAYED_MIN - 1);
+        return snapshotRepository.findTop50ByLateMinutesGreaterThanAndLateMinutesLessThanEqualOrderByCapturedAtDesc(DELAYED_MIN - 1, MAX_STAT_DELAY);
     }
 
     // ── route ranking ─────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
     public List<RouteStats> getTopRoutesByDelay(LocalDate from, LocalDate to) {
-        return snapshotRepository.findTopRoutesByDelay(resolveFrom(from), resolveTo(to), DELAYED_MIN).stream()
-                .map(r -> new RouteStats(
-                        (String) r[0], (String) r[1],
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue(),
-                        ((Number) r[5]).longValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.routes(from, to, null);
     }
 
     @Transactional(readOnly = true)
     public List<RouteStats> getTopRoutesByDelayForStation(LocalDate from, LocalDate to, String stationCode) {
-        return snapshotRepository.findTopRoutesByDelayForStation(resolveFrom(from), resolveTo(to), stationCode, DELAYED_MIN).stream()
-                .map(r -> new RouteStats(
-                        (String) r[0], (String) r[1],
-                        ((Number) r[2]).longValue(),
-                        ((Number) r[3]).longValue(),
-                        ((Number) r[4]).doubleValue(),
-                        ((Number) r[5]).longValue()
-                ))
-                .collect(Collectors.toList());
+        return analyticsAggregateService.routes(from, to, stationCode);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -329,4 +266,10 @@ public class DelayTrackingService {
     private LocalDateTime resolveTo(LocalDate d) {
         return d != null ? d.plusDays(1).atStartOfDay() : LocalDateTime.now().plusDays(1);
     }
+
+    private String serviceScope(String overviewCode) {
+        String scope = ServiceScope.fromOverviewCode(overviewCode);
+        return scope != null ? scope : ServiceScope.CONNOLLY;
+    }
+
 }

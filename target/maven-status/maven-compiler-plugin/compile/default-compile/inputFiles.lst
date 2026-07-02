@@ -2,7 +2,9 @@ D:\programação\RailDelayTracker\src\main\java\com\irishrail\repository\TrainDe
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\StationStats.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\RouteStats.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\service\SnapshotEventService.java
+D:\programação\RailDelayTracker\src\main\java\com\irishrail\service\DatabaseIndexInitializer.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\DestinationStats.java
+D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\ServiceScope.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\DashboardSummary.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\DelayCategory.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\AnalyticsSummary.java
@@ -14,8 +16,10 @@ D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\TripStationS
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\service\IrishRailService.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\TrainInfo.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\repository\TripRepository.java
+D:\programação\RailDelayTracker\src\main\java\com\irishrail\service\AnalyticsAggregateService.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\repository\TripStationSnapshotRepository.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\service\TrainDelayScheduler.java
+D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\DelayLimits.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\HourlyStats.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\StationDelaySummary.java
 D:\programação\RailDelayTracker\src\main\java\com\irishrail\model\StationList.java
