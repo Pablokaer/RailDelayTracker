@@ -21,6 +21,7 @@ com\irishrail\service\DelayTrackingService.class
 com\irishrail\model\StationDelaySummary.class
 com\irishrail\model\TrainInfoList.class
 com\irishrail\model\TrainDelayRecord.class
+com\irishrail\controller\TrainController$CachedPayload.class
 com\irishrail\model\DashboardSummary.class
 com\irishrail\service\IrishRailService.class
 com\irishrail\service\AnalyticsAggregateService.class
