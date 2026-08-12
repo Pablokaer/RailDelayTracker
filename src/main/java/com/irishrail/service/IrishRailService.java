@@ -11,14 +11,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+/** Thin client over the Irish Rail realtime API: station lists and per-station departure boards. */
 @Service
 public class IrishRailService {
 
@@ -42,8 +45,28 @@ public class IrishRailService {
     @Value("${irishrail.heuston.collection-station-types:M,S}")
     private String heustonCollectionStationTypes;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${irishrail.api.station-cache-ms:3600000}")
+    private long stationCacheMs;
+
+    private final RestTemplate restTemplate;
     private final XmlMapper xmlMapper = new XmlMapper();
+
+    /**
+     * Station lists change a few times a year but were re-fetched on every page load — three
+     * upstream calls per view of /overview, /get, /map or /journey.
+     */
+    private final ConcurrentHashMap<String, CachedStations> stationCache = new ConcurrentHashMap<>();
+
+    public IrishRailService(RestTemplate irishRailRestTemplate) {
+        this.restTemplate = irishRailRestTemplate;
+    }
+
+    private record CachedStations(List<Station> stations, long loadedAtMs) {}
+
+    /** Every station on the network ({@code StationType=A}), not just the collected routes. */
+    public List<Station> getAllStations() {
+        return fetchStations(stationListBaseUrl + "A", "A");
+    }
 
     public List<Station> getAllDartStations() {
         return fetchStations(allStationsUrl, "DART");
@@ -99,6 +122,10 @@ public class IrishRailService {
         return distinctSorted(stations);
     }
 
+    public List<Station> getJourneyPlannerStations() {
+        return getCollectionStations();
+    }
+
     public List<TrainInfo> getTrainsByStation(String stationCode) {
         return getTrainsByStation(stationCode, isHeustonStation(stationCode));
     }
@@ -130,7 +157,7 @@ public class IrishRailService {
     }
 
     private List<Station> getStationsByTypes(String stationTypes) {
-        if (stationTypes == null || stationTypes.isBlank()) return Collections.emptyList();
+        if (stationTypes == null || stationTypes.isBlank()) return new ArrayList<>();
         List<Station> stations = List.of(stationTypes.split(",")).stream()
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
@@ -140,16 +167,30 @@ public class IrishRailService {
     }
 
     private List<Station> fetchStations(String url, String label) {
+        CachedStations cached = stationCache.get(url);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= stationCacheMs) {
+            return cached.stations();
+        }
+
         try {
             String xml = restTemplate.getForObject(url, String.class);
-            if (xml == null || xml.isBlank()) return Collections.emptyList();
+            if (xml == null || xml.isBlank()) return fallback(cached);
             StationList list = xmlMapper.readValue(xml, StationList.class);
             List<Station> stations = list.getStations();
-            return stations != null ? stations : Collections.emptyList();
+            if (stations == null || stations.isEmpty()) return fallback(cached);
+
+            List<Station> immutable = List.copyOf(stations);
+            stationCache.put(url, new CachedStations(immutable, System.currentTimeMillis()));
+            return immutable;
         } catch (Exception e) {
             log.error("Falha ao buscar estações {}: {}", label, e.getMessage());
-            return Collections.emptyList();
+            return fallback(cached);
         }
+    }
+
+    /** Stale station names beat no station names — the list is near-static. */
+    private List<Station> fallback(CachedStations cached) {
+        return cached != null ? cached.stations() : Collections.emptyList();
     }
 
     private List<Station> distinctSorted(List<Station> stations) {
@@ -178,6 +219,8 @@ public class IrishRailService {
         station.setStationCode("HSTON");
         station.setStationDesc("Dublin Heuston");
         station.setStationAlias("Heuston");
+        station.setStationLatitude(53.3465);
+        station.setStationLongitude(-6.2927);
         return station;
     }
 
@@ -186,6 +229,8 @@ public class IrishRailService {
         station.setStationCode("CNLLY");
         station.setStationDesc("Dublin Connolly");
         station.setStationAlias("Connolly");
+        station.setStationLatitude(53.3531);
+        station.setStationLongitude(-6.2459);
         return station;
     }
 }

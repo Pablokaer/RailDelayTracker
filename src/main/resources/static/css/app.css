@@ -1,0 +1,127 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   IERailMetrics — shared base
+   Design tokens, page chrome (header/logo/live pill/nav) and the animations that
+   every page uses. Page-specific rules stay in each template's own <style>.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    --ir-green:     #00b84f;
+    --bg-main:      #070b0f;
+    --bg-card:      #0d1520;
+    --bg-row:       #101c28;
+    --bg-row-alt:   #0b1520;
+    --border:       #1f3348;
+    --text-primary: #edf4ff;
+    --text-muted:   #6b8aac;
+    --red:          #e03434;
+    --amber:        #f59e0b;
+    --blue:         #3b82f6;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    background: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+}
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+
+.site-header {
+    background: linear-gradient(180deg, #0a1a0f, #0b1a12);
+    border-bottom: 2px solid var(--ir-green);
+    padding: 1rem 0;
+}
+.ir-logo {
+    min-width: 160px; height: 44px;
+    background: rgba(0, 184, 79, .14);
+    border: 1px solid rgba(0, 184, 79, .45);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    gap: .55rem; padding: 0 .8rem; flex-shrink: 0;
+    color: #3ecf73; font-weight: 800; letter-spacing: 0;
+    text-decoration: none;
+}
+.ir-logo:hover { color: #3ecf73; border-color: var(--ir-green); }
+.ir-logo-mark {
+    width: 28px; height: 28px;
+    background: var(--ir-green); color: #07110c;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem; font-weight: 900;
+}
+.ir-logo-word { color: var(--text-primary); font-size: 1rem; white-space: nowrap; }
+
+.live-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(0, 154, 68, .15);
+    border: 1px solid rgba(0, 154, 68, .4);
+    color: #3ecf73;
+    border-radius: 20px; padding: 3px 12px;
+    font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+}
+.live-dot {
+    width: 7px; height: 7px;
+    background: #3ecf73; border-radius: 50%;
+    animation: pulse 1.6s ease-in-out infinite;
+}
+.live-pill.stale { background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.45); color: var(--amber); }
+.live-pill.stale .live-dot { background: var(--amber); }
+
+/* ── station selector ────────────────────────────────────────────────────── */
+
+.station-select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: .85rem;
+    cursor: pointer;
+    outline: none;
+    transition: border-color .15s;
+}
+.station-select:focus, .station-select:hover { border-color: var(--ir-green); }
+.station-select option { background: #111820; }
+
+/* ── scope nav ───────────────────────────────────────────────────────────── */
+
+.scope-tabs { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.scope-tab {
+    display: inline-flex; align-items: center; gap: .45rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 8px;
+    padding: .55rem .9rem;
+    font-size: .82rem; font-weight: 600;
+    text-decoration: none;
+    transition: all .15s;
+}
+.scope-tab:hover { border-color: var(--ir-green); color: var(--text-primary); }
+.scope-tab.active { background: rgba(0, 154, 68, .14); border-color: var(--ir-green); color: #3ecf73; }
+
+/* ── animations ──────────────────────────────────────────────────────────── */
+
+.spin { animation: spin .7s linear infinite; }
+
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+@keyframes spin  { to { transform: rotate(360deg); } }
+@keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes rowSlideIn  { from { opacity: 0; transform: translateX(-5px) } to { opacity: 1; transform: translateX(0) } }
+
+/* ── responsive header ───────────────────────────────────────────────────── */
+
+@media (max-width: 575px) {
+    .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
+    .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
+    .site-header .d-flex > * { order: 2; }
+    .site-header .ir-logo { order: 1; margin: 0 auto 4px; }
+    .site-header .ir-logo + div { order: 2; flex: 0 0 100%; text-align: center; }
+    .site-header .ms-3 { order: 9; flex: 0 0 100%; margin-left: 0 !important; }
+    .site-header .ms-auto { order: 10; flex: 0 0 100%; align-items: center !important; margin-left: 0 !important; }
+    .station-select { width: 100%; }
+    .scope-tab { flex: 1 1 auto; justify-content: center; padding: .5rem .65rem; }
+}

@@ -910,4 +910,42 @@ public interface TripStationSnapshotRepository extends JpaRepository<TripStation
                                                            @Param("to") LocalDateTime to,
                                                            @Param("stationCode") String stationCode,
                                                            @Param("minDelay") int minDelay);
+
+    // ── per-train history (used by the live map) ──────────────────────────────
+    // Irish Rail pads train codes ("A408 "), and stored rows keep the padding, so both
+    // sides are trimmed. idx_trip_train_code_trimmed in DatabaseIndexInitializer covers
+    // the resulting expression.
+
+    @Query(value = """
+            SELECT t.train_date,
+                   s.station_full_name,
+                   s.station_code,
+                   s.sch_depart,
+                   s.late_minutes,
+                   s.captured_at
+            FROM trip_station_snapshot s
+            JOIN trip t ON t.id = s.trip_id
+            WHERE UPPER(TRIM(t.train_code)) = UPPER(TRIM(:trainCode))
+              AND s.late_minutes <= :maxDelay
+            ORDER BY s.captured_at DESC
+            LIMIT :maxRows
+            """, nativeQuery = true)
+    List<Object[]> findRecentSnapshotsByTrainCode(@Param("trainCode") String trainCode,
+                                                  @Param("maxDelay") int maxDelay,
+                                                  @Param("maxRows") int maxRows);
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT t.train_date)                    AS days_tracked,
+                   COUNT(*)                                        AS snapshots,
+                   COALESCE(AVG(CAST(s.late_minutes AS FLOAT)), 0)  AS avg_delay,
+                   COALESCE(MAX(s.late_minutes), 0)                AS max_delay,
+                   SUM(CASE WHEN s.late_minutes >= :minDelay THEN 1 ELSE 0 END) AS delayed
+            FROM trip_station_snapshot s
+            JOIN trip t ON t.id = s.trip_id
+            WHERE UPPER(TRIM(t.train_code)) = UPPER(TRIM(:trainCode))
+              AND s.late_minutes <= :maxDelay
+            """, nativeQuery = true)
+    List<Object[]> findTrainCodeStats(@Param("trainCode") String trainCode,
+                                      @Param("minDelay") int minDelay,
+                                      @Param("maxDelay") int maxDelay);
 }

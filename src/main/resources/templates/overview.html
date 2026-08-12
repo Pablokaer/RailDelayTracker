@@ -1,43 +1,12 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-BSK6EC97T9"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-BSK6EC97T9');
-    </script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <th:block th:replace="~{fragments/layout :: analytics}"></th:block>
+    <th:block th:replace="~{fragments/layout :: base-assets}"></th:block>
+    <th:block th:replace="~{fragments/layout :: chartjs}"></th:block>
     <title>IERailMetrics — Overview</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <style>
-        :root {
-            font-size: 16px;
-            --ir-green: #00b84f;
-            --bg-main:  #070b0f;
-            --bg-card:  #0d1520;
-            --bg-row:   #101c28;
-            --bg-row-alt: #0b1520;
-            --border:   #1f3348;
-            --text-primary: #edf4ff;
-            --text-muted:   #6b8aac;
-        }
-        * { box-sizing: border-box; }
-        body { background: var(--bg-main); color: var(--text-primary); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
-
-        .site-header { background: linear-gradient(180deg,#0a1a0f,#0b1a12); border-bottom: 2px solid var(--ir-green); padding: 1rem 0; }
-        .ir-logo { min-width:160px; height:44px; background:rgba(0,184,79,.14); border:1px solid rgba(0,184,79,.45); border-radius:8px; display:flex; align-items:center; gap:.55rem; justify-content:center; padding:0 .8rem; flex-shrink:0; color:#3ecf73; font-weight:800; letter-spacing:0; }
-        .ir-logo-mark { width:28px; height:28px; background:var(--ir-green); color:#07110c; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:900; }
-        .ir-logo-word { color:var(--text-primary); font-size:1rem; white-space:nowrap; }
-
-        .station-select { background:var(--bg-card); border:1px solid var(--border); color:var(--text-primary); border-radius:8px; padding:6px 14px; font-size:.85rem; cursor:pointer; outline:none; transition:border-color .15s; }
-        .station-select:focus,.station-select:hover { border-color:var(--ir-green); }
-        .station-select option { background:#111820; }
+        :root { font-size: 16px; }
 
         .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,.5); }
         table { width:100%; border-collapse:collapse; }
@@ -103,24 +72,14 @@
 
         .overview-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(0,154,68,.15); border:1px solid rgba(0,154,68,.4); color:#3ecf73; border-radius:20px; padding:3px 12px; font-size:.78rem; font-weight:600; letter-spacing:.04em; }
         #ov-recent-tbody .badge-late { display:inline-block; min-width:60px; text-align:center; }
-        .scope-tabs { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; }
-        .scope-tab { display:inline-flex; align-items:center; gap:.45rem; background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); border-radius:8px; padding:.55rem .9rem; font-size:.82rem; font-weight:600; text-decoration:none; transition:all .15s; }
-        .scope-tab:hover { border-color:var(--ir-green); color:var(--text-primary); }
-        .scope-tab.active { background:rgba(0,154,68,.14); border-color:var(--ir-green); color:#3ecf73; }
         .scope-tab i { font-size:1rem; }
         .scope-tab.loading { border-color:var(--ir-green); color:#3ecf73; opacity:1 !important; }
         .scope-spinner { width:.9rem; height:.9rem; border:2px solid rgba(62,207,115,.25); border-top-color:#3ecf73; border-radius:50%; animation:spin .7s linear infinite; display:none; }
         .scope-tab.loading .scope-spinner { display:inline-block; }
         .scope-tab.loading i { display:none; }
 
+        /* Shared header/nav responsive rules live in /css/app.css */
         @media (max-width: 575px) {
-            .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
-            .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
-            .site-header .d-flex > * { order: 2; }
-            .site-header .ir-logo { order: 1; margin: 0 auto 4px; }
-            .site-header .ir-logo + div { order: 2; flex: 0 0 100%; text-align: center; }
-            .site-header .ms-3 { order: 9; flex: 0 0 100%; margin-left: 0 !important; }
-            .station-select { width: 100%; }
             .a-stat-val { font-size: 1.4rem; }
             .a-stat-card { padding: .8rem .9rem; }
             .filter-period-bar { gap: .5rem; padding: .7rem .75rem .8rem; }
@@ -137,9 +96,6 @@
         @media (min-width: 576px) {
             #chart-hourly { height: 300px; }
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeSlideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes rowSlideIn  { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
         .rank-bar-fill { transition:width .6s cubic-bezier(.25,.8,.25,1) !important; }
         .a-stat-card,.chart-card,.board-wrap { opacity:0; transform:translateY(18px); transition:opacity .5s ease,transform .5s ease; will-change:opacity,transform; }
         .a-stat-card.visible,.chart-card.visible,.board-wrap.visible { opacity:1; transform:translateY(0); will-change:auto; }
@@ -148,33 +104,9 @@
 <body>
 
 <!-- ═══════ HEADER ═══════ -->
-<header class="site-header">
-    <div class="container-fluid px-4">
-        <div class="d-flex align-items-center gap-3">
-            <div class="ir-logo" aria-label="IERailMetrics">
-                <span class="ir-logo-mark">IE</span>
-                <span class="ir-logo-word">IERailMetrics</span>
-            </div>
-            <div>
-                <div id="overview-title" class="fw-bold fs-5 lh-1"
-                     th:text="${hasStationFilter} ? 'Overview — ' + ${selectedStationName} : 'Overview — All Stations'">
-                    Overview
-                </div>
-                <div style="font-size:.8rem;color:var(--text-muted)">Irish Rail · Network Analytics</div>
-            </div>
-            <div class="ms-3">
-                <select class="station-select" id="overview-station-select" onchange="changeStation(this.value)">
-                    <option value="OVERVIEW" th:selected="${!hasStationFilter}">Overview — All Stations</option>
-                    <option th:each="s : ${stations}"
-                            th:value="${s.stationCode}"
-                            th:text="${s.stationDesc}"
-                            th:selected="${s.stationCode == selectedCode}"></option>
-                </select>
-            </div>
-
-        </div>
-    </div>
-</header>
+<th:block th:replace="~{fragments/layout :: site-header(
+        ${hasStationFilter} ? 'Overview — ' + ${selectedStationName} : 'Overview — All Stations',
+        'Irish Rail · Network Analytics', true, null, null, 'changeStation')}"></th:block>
 
 <main class="container-fluid px-4 py-4">
 
@@ -190,6 +122,12 @@
     <a href="#" class="scope-tab" data-scope="HSTON" th:classappend="${selectedCode == heustonCode} ? ' active' : ''"
        onclick="switchScope('HSTON', this); return false;">
         <span class="scope-spinner" aria-hidden="true"></span><i class="bi bi-signpost-split"></i><span>Heuston</span>
+    </a>
+    <a href="/journey" class="scope-tab">
+        <i class="bi bi-signpost-split"></i><span>Journey</span>
+    </a>
+    <a href="/map" class="scope-tab">
+        <i class="bi bi-geo-alt"></i><span>Map</span>
     </a>
 </nav>
 
@@ -508,7 +446,7 @@ const _catExtreme  = /*[[${catExtreme}]]*/ 0;
 const _CAT_DATA    = /*[[${delayCategoryData}]]*/ [];
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<th:block th:replace="~{fragments/layout :: bootstrap-js}"></th:block>
 <script>
 /* ── Animation helpers ── */
 function countUp(el, dur) {
@@ -581,6 +519,14 @@ function switchScope(code, clickedTab) {
 }
 
 function changeStation(code) {
+    if (code === 'MAP') {
+        window.location.href = '/map';
+        return;
+    }
+    if (code === 'JOURNEY') {
+        window.location.href = '/journey';
+        return;
+    }
     const tab = document.querySelector(`.scope-tab[data-scope="${code}"]`);
     switchScope(code, tab);
 }
@@ -788,7 +734,7 @@ function setScopeLoading(btn, loading, isScopeLoading) {
         tab.style.pointerEvents = loading ? 'none' : '';
         tab.style.opacity = loading ? '.65' : '';
     });
-    const selector = document.getElementById('overview-station-select');
+    const selector = document.getElementById('station-selector');
     if (selector) selector.disabled = loading;
 
     if (!isScopeLoading || !btn) return;
@@ -838,7 +784,7 @@ function updateOverviewControls(params, activeButton) {
 
 function updateScopeControls(code) {
     const selectedCode = code && code !== 'OVERVIEW' ? code : 'OVERVIEW';
-    const selector = document.getElementById('overview-station-select');
+    const selector = document.getElementById('station-selector');
     const selectedName = selector
         ? (selector.querySelector(`option[value="${selectedCode}"]`)?.textContent || selectedCode)
         : selectedCode;
@@ -852,7 +798,7 @@ function updateScopeControls(code) {
         tab.classList.toggle('active', tab.dataset.scope === selectedCode);
     });
 
-    const title = document.getElementById('overview-title');
+    const title = document.getElementById('page-title');
     if (title) title.textContent = isStation ? `Overview — ${selectedName}` : 'Overview — All Stations';
 
     const summaryTitle = document.getElementById('overview-summary-title');
