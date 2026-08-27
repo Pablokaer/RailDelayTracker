@@ -147,8 +147,11 @@ irishrail.analytics.aggregates.refresh-ms=60000
 
 irishrail.sse.heartbeat-ms=25000
 
-# tile.openstreetmap.org is not permitted for production traffic by the OSMF tile usage policy.
-irishrail.map.tile-url=https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png
+# tile.openstreetmap.org is not permitted for production traffic by the OSMF tile usage policy,
+# and CARTO's basemaps need an API key since Aug 2026 (they return a placeholder image otherwise).
+# Esri's light gray canvas is keyless; note its {z}/{y}/{x} order and zoom cap.
+irishrail.map.tile-url=https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}
+irishrail.map.tile-max-zoom=16
 irishrail.map.refresh-ms=10000
 
 irishrail.retention.days=30

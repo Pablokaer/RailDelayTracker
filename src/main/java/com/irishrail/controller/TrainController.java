@@ -52,6 +52,9 @@ public class TrainController {
     @Value("${irishrail.map.tile-filter:none}")
     private String mapTileFilter;
 
+    @Value("${irishrail.map.tile-max-zoom:18}")
+    private int mapTileMaxZoom;
+
     @Value("${irishrail.map.rail-overlay-url:}")
     private String railOverlayUrl;
 
@@ -282,6 +285,7 @@ public class TrainController {
         model.addAttribute("mapTileUrl", mapTileUrl);
         model.addAttribute("mapTileAttribution", mapTileAttribution);
         model.addAttribute("mapTileFilter", mapTileFilter);
+        model.addAttribute("mapTileMaxZoom", mapTileMaxZoom);
         model.addAttribute("railOverlayUrl", railOverlayUrl);
         model.addAttribute("railOverlayAttribution", railOverlayAttribution);
         model.addAttribute("mapRefreshMs", mapRefreshMs);

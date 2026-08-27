@@ -11,7 +11,7 @@ const map = L.map('train-map', {
     preferCanvas: true
 }).setView([53.35, -7.8], 7);
 
-L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 18 }).addTo(map);
+L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM }).addTo(map);
 
 // Physical rail geometry from OpenRailwayMap. Created lazily so no tiles are requested from a
 // volunteer-run service until someone actually turns the layer on.
