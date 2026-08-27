@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -235,16 +236,56 @@ public class IrishRailService {
     }
 
     private List<Station> distinctSorted(List<Station> stations) {
+        return dedupe(stations).stream()
+                .sorted(Comparator.comparing(Station::getStationDesc, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * One entry per physical station.
+     *
+     * <p>Distinct by code is not enough: the four-track stretch of the Kildare line (Adamstown,
+     * Clondalkin, Hazelhatch, Kishoge, Park West) is listed once per platform pair — a base code
+     * with {@code StationId} N plus an "F" (fast, 900+N) and an "S" (slow, 1000+N) variant, all
+     * with the same coordinates and all answering with the same departures. They showed up as
+     * three identical rows in the journey planner and cost nine redundant upstream calls per
+     * collection cycle. Most variants share the name; one does not ("PARK WEST" for Park West and
+     * Cherry Orchard), so identical coordinates — to 4 decimals, about 10 m — count as the same
+     * station too. Within a group the lowest {@code StationId} wins, which is the base code (and
+     * the one the departure feed itself reports for every train).
+     */
+    static List<Station> dedupe(List<Station> stations) {
         Map<String, Station> byCode = new LinkedHashMap<>();
         for (Station station : stations) {
             String code = normalizeCode(station.getStationCode());
-            if (!code.isBlank()) {
-                byCode.putIfAbsent(code, station);
-            }
+            if (!code.isBlank()) byCode.putIfAbsent(code, station);
         }
-        return byCode.values().stream()
-                .sorted(Comparator.comparing(Station::getStationDesc, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .collect(Collectors.toList());
+        Map<String, Station> byName = collapse(byCode.values(), IrishRailService::nameKey);
+        Map<String, Station> byPlace = collapse(byName.values(), IrishRailService::placeKey);
+        return new ArrayList<>(byPlace.values());
+    }
+
+    /** Groups by {@code key}, keeping the lowest StationId per group; a null key never groups. */
+    private static Map<String, Station> collapse(Iterable<Station> stations,
+                                                 java.util.function.Function<Station, String> key) {
+        Map<String, Station> kept = new LinkedHashMap<>();
+        for (Station station : stations) {
+            String k = key.apply(station);
+            if (k == null) k = "code:" + normalizeCode(station.getStationCode());
+            Station existing = kept.get(k);
+            if (existing == null || station.getStationId() < existing.getStationId()) kept.put(k, station);
+        }
+        return kept;
+    }
+
+    private static String nameKey(Station station) {
+        String name = StationDirectory.normalize(station.getStationDesc());
+        return name.isEmpty() ? null : "name:" + name;
+    }
+
+    private static String placeKey(Station station) {
+        if (!StationDirectory.hasValidCoordinates(station)) return null;
+        return String.format(Locale.ROOT, "place:%.4f,%.4f", station.getStationLatitude(), station.getStationLongitude());
     }
 
     private static boolean isHeustonStation(String stationCode) {
