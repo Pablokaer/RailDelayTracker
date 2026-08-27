@@ -11,6 +11,16 @@
         .station-select { width:100%; background:#101a25; border:1px solid var(--border); color:var(--text-primary); padding:0 .8rem; outline:none; }
         .station-select:focus, .station-select:hover { border-color:var(--ir-green); }
         .station-select option { background:#111820; }
+        /* Searchable station picker: a text input over a hidden code, with a filtered list below. */
+        .station-combo { position:relative; }
+        .station-combo .station-select { padding-right:2.2rem; }
+        .station-combo .combo-caret { position:absolute; right:.8rem; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none; font-size:.8rem; }
+        .station-options { position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:30; max-height:280px; overflow-y:auto; margin:0; padding:.3rem; list-style:none; background:#101a25; border:1px solid var(--border); border-radius:8px; box-shadow:0 12px 32px rgba(0,0,0,.45); }
+        .station-options[hidden] { display:none; }
+        .station-options li { padding:.45rem .7rem; border-radius:6px; cursor:pointer; font-size:.9rem; color:var(--text-primary); }
+        .station-options li mark { background:none; color:var(--ir-green); font-weight:700; padding:0; }
+        .station-options li.active, .station-options li:hover { background:rgba(62,207,115,.14); }
+        .station-options li.no-match { color:var(--text-muted); cursor:default; }
         .action-btn { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; background:var(--ir-green); color:#06100a; border:1px solid var(--ir-green); font-weight:800; padding:0 1rem; min-width:120px; }
         .action-btn:disabled { opacity:.65; cursor:wait; }
 
@@ -53,16 +63,26 @@
     <section class="planner-panel">
         <div class="planner-grid">
             <div>
-                <div class="field-label">From station</div>
-                <select class="station-select" id="from-station">
-                    <option th:each="s, iter : ${stations}" th:value="${s.stationCode}" th:text="${s.stationDesc}" th:selected="${iter.index == 0}"></option>
-                </select>
+                <label class="field-label" for="from-station-input">From station</label>
+                <div class="station-combo" id="from-combo">
+                    <input class="station-select" id="from-station-input" type="text" placeholder="Type a station name…"
+                           autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list"
+                           aria-expanded="false" aria-controls="from-station-list">
+                    <i class="bi bi-chevron-down combo-caret" aria-hidden="true"></i>
+                    <input type="hidden" id="from-station">
+                    <ul class="station-options" id="from-station-list" role="listbox" hidden></ul>
+                </div>
             </div>
             <div>
-                <div class="field-label">To station</div>
-                <select class="station-select" id="to-station">
-                    <option th:each="s, iter : ${stations}" th:value="${s.stationCode}" th:text="${s.stationDesc}" th:selected="${iter.index == 1}"></option>
-                </select>
+                <label class="field-label" for="to-station-input">To station</label>
+                <div class="station-combo" id="to-combo">
+                    <input class="station-select" id="to-station-input" type="text" placeholder="Type a station name…"
+                           autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list"
+                           aria-expanded="false" aria-controls="to-station-list">
+                    <i class="bi bi-chevron-down combo-caret" aria-hidden="true"></i>
+                    <input type="hidden" id="to-station">
+                    <ul class="station-options" id="to-station-list" role="listbox" hidden></ul>
+                </div>
             </div>
             <button class="action-btn" id="search-btn" type="button" onclick="fetchJourneyOptions()">
                 <i class="bi bi-search"></i><span>Find trains</span>
@@ -107,6 +127,10 @@
     </section>
 </main>
 
+<script th:inline="javascript">
+// One {code, name} per station, in display order. Fed to the searchable pickers.
+const STATIONS = /*[[${stations.![{code: stationCode, name: stationDesc}]}]]*/ [];
+</script>
 <script th:src="@{/js/journey.js}"></script>
 </body>
 </html>
