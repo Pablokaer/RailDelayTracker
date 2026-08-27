@@ -9,12 +9,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -39,6 +44,8 @@ public class TrainDelayScheduler {
     private final SnapshotEventService          snapshotEventService;
     private final AnalyticsAggregateService     analyticsAggregateService;
     private final ThreadPoolTaskExecutor        stationFetchExecutor;
+    private final TaskScheduler                 taskScheduler;
+    private final TransactionTemplate           transactions;
 
     @Value("${irishrail.retention.days:30}")
     private int retentionDays;
@@ -53,6 +60,9 @@ public class TrainDelayScheduler {
     @Value("${irishrail.collector.cycle-budget-seconds:120}")
     private long cycleBudgetSeconds;
 
+    @Value("${irishrail.retention.startup-delay-ms:45000}")
+    private long retentionStartupDelayMs;
+
     /** One departure as the change detector sees it → the last lateMinutes we stored for it. */
     private record SeenKey(String scope, String trainCode, String stationCode, String trainDate, String schDepart) {}
 
@@ -64,7 +74,9 @@ public class TrainDelayScheduler {
                                TripRepository tripRepository,
                                SnapshotEventService snapshotEventService,
                                AnalyticsAggregateService analyticsAggregateService,
-                               @Qualifier("stationFetchExecutor") ThreadPoolTaskExecutor stationFetchExecutor) {
+                               @Qualifier("stationFetchExecutor") ThreadPoolTaskExecutor stationFetchExecutor,
+                               TaskScheduler taskScheduler,
+                               PlatformTransactionManager transactionManager) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
         this.snapshotRepository   = snapshotRepository;
@@ -72,6 +84,8 @@ public class TrainDelayScheduler {
         this.snapshotEventService = snapshotEventService;
         this.analyticsAggregateService = analyticsAggregateService;
         this.stationFetchExecutor = stationFetchExecutor;
+        this.taskScheduler        = taskScheduler;
+        this.transactions         = new TransactionTemplate(transactionManager);
     }
 
     private record FetchJob(Station station, String scope, boolean heustonOnly) {}
@@ -182,7 +196,19 @@ public class TrainDelayScheduler {
         return new FetchResult(job.scope(), trains);
     }
 
-    // ── cleanup: every day at 03:00 ──────────────────────────────────────────
+    // ── cleanup: every day at 03:00, and once after each start ───────────────
+
+    /**
+     * The 03:00 cron only fires if the process is alive at that instant. A deploy or an outage
+     * spanning it skips a day, and a development instance that is never up at 03:00 never trims at
+     * all — which is how a local database ended up holding snapshots six weeks past the cutoff.
+     * Running once after boot makes the policy hold regardless of uptime pattern. Delayed so it
+     * does not compete with the startup backfill and the first collection cycles.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void scheduleStartupCleanup() {
+        taskScheduler.schedule(this::cleanup, Instant.now().plusMillis(retentionStartupDelayMs));
+    }
 
     /**
      * Two independent cutoffs. Applying one cutoff to both tables meant the cheap long-term
@@ -192,9 +218,18 @@ public class TrainDelayScheduler {
      * behind — the aggregate for any remaining day is therefore always complete, which is what lets
      * the startup backfill safely re-derive it.
      */
-    @Transactional
     @Scheduled(cron = "0 0 3 * * *")
     public void cleanup() {
+        // TransactionTemplate rather than @Transactional: the startup path above calls this method
+        // on the same bean, and self-invocation bypasses the Spring proxy.
+        try {
+            transactions.executeWithoutResult(status -> cleanupInTransaction());
+        } catch (RuntimeException e) {
+            log.error("Cleanup failed; retention will be retried at the next scheduled run: {}", e.getMessage());
+        }
+    }
+
+    private void cleanupInTransaction() {
         LocalDate rawCutoff = LocalDate.now().minusDays(retentionDays);
         int snapshots = snapshotRepository.deleteByCapturedAtBefore(rawCutoff.atStartOfDay());
         int trips     = tripRepository.deleteOrphans();

@@ -151,7 +151,7 @@ irishrail.sse.heartbeat-ms=25000
 irishrail.map.tile-url=https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png
 irishrail.map.refresh-ms=10000
 
-irishrail.retention.days=90
+irishrail.retention.days=30
 ```
 
 ---
@@ -220,6 +220,7 @@ Aggregates are ~75× cheaper per day of history, so the two are trimmed on **sep
 
 ```properties
 irishrail.retention.days=30            # raw snapshots
+irishrail.retention.startup-delay-ms=45000  # the sweep also runs once after boot
 irishrail.retention.aggregate-days=0   # 0 = keep aggregate history forever
 ```
 
