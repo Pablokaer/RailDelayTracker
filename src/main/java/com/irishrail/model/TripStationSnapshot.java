@@ -12,7 +12,9 @@ public class TripStationSnapshot {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    // Lazy: only the legacy /api/analytics/recent reads snapshots as entities, and that query
+    // JOIN FETCHes the trip explicitly. Eager would have dragged the join into every load.
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "trip_id", nullable = false)
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Trip trip;

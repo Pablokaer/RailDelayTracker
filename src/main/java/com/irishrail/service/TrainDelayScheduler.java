@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,8 +53,10 @@ public class TrainDelayScheduler {
     @Value("${irishrail.collector.cycle-budget-seconds:120}")
     private long cycleBudgetSeconds;
 
-    // key = scope|trainCode|stationCode|trainDate|schDepart → last saved lateMinutes
-    private final ConcurrentHashMap<String, Integer> lastSeen = new ConcurrentHashMap<>();
+    /** One departure as the change detector sees it → the last lateMinutes we stored for it. */
+    private record SeenKey(String scope, String trainCode, String stationCode, String trainDate, String schDepart) {}
+
+    private final ConcurrentHashMap<SeenKey, Integer> lastSeen = new ConcurrentHashMap<>();
 
     public TrainDelayScheduler(IrishRailService irishRailService,
                                DelayTrackingService delayTrackingService,
@@ -105,6 +106,7 @@ public class TrainDelayScheduler {
 
         long startedAtNanos = System.nanoTime();
         List<FetchResult> results = fetchAllInParallel(jobs);
+        long fetchedAtNanos = System.nanoTime();
 
         // Persist on this thread: one transaction boundary per scope, and the change-detection map
         // stays deterministic instead of racing across fetch threads.
@@ -119,17 +121,24 @@ public class TrainDelayScheduler {
 
         int totalSaved = 0;
         for (Map.Entry<String, List<TrainInfo>> entry : changedByScope.entrySet()) {
-            delayTrackingService.saveAll(entry.getValue(), entry.getKey());
+            DelayTrackingService.SavedBatch batch = delayTrackingService.saveAll(entry.getValue(), entry.getKey());
             totalSaved += entry.getValue().size();
+            // The roll-up runs on its own schedule and only touches what this batch changed, so
+            // its cost no longer sits inside the collection cycle or scales with the day so far.
+            analyticsAggregateService.markDirty(batch.capturedAt().toLocalDate(), batch.tripIds(), batch.capturedAt());
         }
 
-        Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAtNanos);
+        long doneNanos = System.nanoTime();
         if (totalSaved > 0) {
-            log.info("Collect: {} snapshots saved across {} station checks in {} ms ({} Connolly, {} Heuston)",
-                    totalSaved, jobs.size(), elapsed.toMillis(), connollyStations.size(), heustonStations.size());
-            analyticsAggregateService.refreshDate(LocalDateTime.now().toLocalDate());
+            log.info("Collect: {} snapshots saved across {} station checks in {} ms (fetch {} ms, persist {} ms; {} Connolly, {} Heuston)",
+                    totalSaved, jobs.size(),
+                    Duration.ofNanos(doneNanos - startedAtNanos).toMillis(),
+                    Duration.ofNanos(fetchedAtNanos - startedAtNanos).toMillis(),
+                    Duration.ofNanos(doneNanos - fetchedAtNanos).toMillis(),
+                    connollyStations.size(), heustonStations.size());
         } else {
-            log.debug("Collect: no changes across {} station checks in {} ms", jobs.size(), elapsed.toMillis());
+            log.debug("Collect: no changes across {} station checks in {} ms", jobs.size(),
+                    Duration.ofNanos(doneNanos - startedAtNanos).toMillis());
         }
         snapshotEventService.broadcast();
     }
@@ -163,7 +172,9 @@ public class TrainDelayScheduler {
     }
 
     private FetchResult fetch(FetchJob job) {
-        List<TrainInfo> trains = irishRailService.getTrainsByStation(
+        // Always live: this is the one place that refreshes the departure-board cache that
+        // /api/trains and the journey planner read from.
+        List<TrainInfo> trains = irishRailService.fetchTrainsByStation(
                 job.station().getStationCode(), !ServiceScope.CONNOLLY.equals(job.scope()));
         if (job.heustonOnly()) {
             trains = trains.stream().filter(IrishRailService::isHeustonRelated).collect(Collectors.toList());
@@ -197,6 +208,7 @@ public class TrainDelayScheduler {
         }
 
         lastSeen.clear();
+        delayTrackingService.clearTripCache();
         log.info("Cleanup: {} snapshots older than {} and {} orphan trips deleted; "
                         + "{} aggregate rows deleted ({}); state map cleared",
                 snapshots, rawCutoff, trips, aggregates, aggregateNote);
@@ -213,11 +225,7 @@ public class TrainDelayScheduler {
     // ── state-change filter ───────────────────────────────────────────────────
 
     private boolean hasChanged(TrainInfo t, String scope) {
-        String key = scope + "|"
-                   + t.getTrainCode()  + "|"
-                   + t.getStationCode() + "|"
-                   + t.getTrainDate()   + "|"
-                   + t.getSchDepart();
+        SeenKey key = new SeenKey(scope, t.getTrainCode(), t.getStationCode(), t.getTrainDate(), t.getSchDepart());
         Integer last    = lastSeen.get(key);
         int     current = t.getLate();
         if (last == null || !last.equals(current)) {

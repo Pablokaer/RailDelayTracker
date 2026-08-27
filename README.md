@@ -27,7 +27,7 @@ These endpoints are used:
 
 The API returns **XML**, which is deserialized using Jackson XML. Each response includes scheduled time, actual time, minutes late, origin, destination, and train type.
 
-Data is collected automatically every **30 seconds** during DART operating hours (06:00–00:30), using Spring's `@Scheduled`. Each cycle polls ~140 stations concurrently on a bounded thread pool (`irishrail.collector.threads`) and completes in well under a second in steady state. Each snapshot of a train at a station is persisted to the database to build the analytics history.
+Data is collected automatically every **30 seconds** during DART operating hours (06:00–00:30), using Spring's `@Scheduled`. Each cycle polls ~140 stations concurrently on a bounded thread pool (`irishrail.collector.threads`) and completes in well under a second in steady state. Changed departures are written as a single JDBC batch (a few ms per cycle), and the boards fetched by the collector are cached for `irishrail.api.board-cache-ms`, so `/api/trains` and the journey planner read the collector's copy instead of polling upstream per open tab. The daily analytics aggregates are rolled up on their own timer (`irishrail.analytics.aggregates.refresh-ms`), restricted to the trips each cycle actually changed — never by re-reading the whole day.
 
 Filters applied during collection:
 - The live overview exposes configured service tabs (`irishrail.tracked-station-codes`)
@@ -119,8 +119,8 @@ spring.datasource.url=jdbc:postgresql://localhost:5432/irishrail
 spring.datasource.username=${DB_USERNAME:postgres}
 spring.datasource.password=${DB_PASSWORD:postgres}
 
-# Four independent @Scheduled tasks run — the default pool size of 1 would starve them.
-spring.task.scheduling.pool.size=4
+# Six independent @Scheduled tasks run — the default pool size of 1 would starve them.
+spring.task.scheduling.pool.size=6
 
 irishrail.api.all-stations-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=D
 irishrail.api.station-list-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=
@@ -132,6 +132,7 @@ irishrail.api.connect-timeout-ms=4000
 irishrail.api.read-timeout-ms=8000
 
 irishrail.api.station-cache-ms=3600000
+irishrail.api.board-cache-ms=35000
 irishrail.api.train-positions-refresh-ms=10000
 
 irishrail.collector.interval-ms=30000
@@ -142,6 +143,7 @@ irishrail.connolly.collection-station-types=D
 irishrail.heuston.collection-station-types=M,S
 irishrail.tracked-station-codes=CNLLY,HSTON
 irishrail.analytics.aggregates.backfill-on-startup=true
+irishrail.analytics.aggregates.refresh-ms=60000
 
 irishrail.sse.heartbeat-ms=25000
 

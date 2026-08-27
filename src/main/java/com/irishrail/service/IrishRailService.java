@@ -48,6 +48,9 @@ public class IrishRailService {
     @Value("${irishrail.api.station-cache-ms:3600000}")
     private long stationCacheMs;
 
+    @Value("${irishrail.api.board-cache-ms:35000}")
+    private long boardCacheMs;
+
     private final RestTemplate restTemplate;
     private final XmlMapper xmlMapper = new XmlMapper();
 
@@ -62,6 +65,16 @@ public class IrishRailService {
     }
 
     private record CachedStations(List<Station> stations, long loadedAtMs) {}
+
+    /**
+     * Departure boards, keyed by station and Heuston filter. The collector refreshes every tracked
+     * station each cycle through {@link #fetchTrainsByStation}; page requests read that copy via
+     * {@link #getTrainsByStation}. Before, every open tab of the live board was its own upstream
+     * poll of a station the collector had fetched seconds earlier.
+     */
+    private record CachedBoard(List<TrainInfo> trains, long loadedAtMs) {}
+
+    private final ConcurrentHashMap<String, CachedBoard> boardCache = new ConcurrentHashMap<>();
 
     /** Every station on the network ({@code StationType=A}), not just the collected routes. */
     public List<Station> getAllStations() {
@@ -130,22 +143,50 @@ public class IrishRailService {
         return getTrainsByStation(stationCode, isHeustonStation(stationCode));
     }
 
+    /** Serves the collector's copy when it is fresh enough; otherwise goes upstream. */
     public List<TrainInfo> getTrainsByStation(String stationCode, boolean includeHeustonTrains) {
+        CachedBoard cached = boardCache.get(boardKey(stationCode, includeHeustonTrains));
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= boardCacheMs) {
+            return cached.trains();
+        }
+        return fetchTrainsByStation(stationCode, includeHeustonTrains);
+    }
+
+    /** Always goes upstream and refreshes the cache. The collector's entry point. */
+    public List<TrainInfo> fetchTrainsByStation(String stationCode, boolean includeHeustonTrains) {
+        String key = boardKey(stationCode, includeHeustonTrains);
         try {
             String url = stationDataBaseUrl + stationCode;
             String xml = restTemplate.getForObject(url, String.class);
-            if (xml == null || xml.isBlank()) return Collections.emptyList();
+            if (xml == null || xml.isBlank()) return staleBoardOrEmpty(key);
             TrainInfoList list = xmlMapper.readValue(xml, TrainInfoList.class);
             List<TrainInfo> trains = list.getTrains();
-            if (trains == null) return Collections.emptyList();
-            return trains.stream()
+            List<TrainInfo> filtered = trains == null ? List.of() : trains.stream()
                     .filter(t -> !"bus".equalsIgnoreCase(t.getTrainType()))
                     .filter(t -> includeHeustonTrains || (!containsHeuston(t.getOrigin()) && !containsHeuston(t.getDestination())))
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toUnmodifiableList());
+            boardCache.put(key, new CachedBoard(filtered, System.currentTimeMillis()));
+            return filtered;
         } catch (Exception e) {
             log.error("Falha ao buscar dados da estação {}: {}", stationCode, e.getMessage());
-            return Collections.emptyList();
+            return staleBoardOrEmpty(key);
         }
+    }
+
+    /**
+     * On an upstream failure a board up to two cycles old is still better than a blank one; past
+     * that it would be showing trains that have long since left.
+     */
+    private List<TrainInfo> staleBoardOrEmpty(String key) {
+        CachedBoard cached = boardCache.get(key);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= boardCacheMs * 2) {
+            return cached.trains();
+        }
+        return Collections.emptyList();
+    }
+
+    private static String boardKey(String stationCode, boolean includeHeustonTrains) {
+        return normalizeCode(stationCode) + "|" + includeHeustonTrains;
     }
 
     public static boolean containsHeuston(String value) {

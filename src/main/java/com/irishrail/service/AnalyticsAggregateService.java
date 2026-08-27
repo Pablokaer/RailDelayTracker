@@ -15,6 +15,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,8 +23,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 
@@ -142,9 +148,9 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                 return;
             }
 
-            int stationRows = insertStationRouteAggregates(null, null);
-            int tripRows = insertTripAggregates(null, null);
-            int hourRows = insertHourlyAggregates(null, null);
+            int stationRows = insertStationRouteAggregates(Window.all());
+            int tripRows = insertTripAggregates(Window.all());
+            int hourRows = insertHourlyAggregates(Window.all());
             log.info("Analytics aggregates refreshed from {} day(s) of raw data ({} to {}): "
                             + "{} station-route rows, {} trip rows, {} hourly rows",
                     dates.size(), dates.get(0), dates.get(dates.size() - 1),
@@ -152,23 +158,116 @@ public class AnalyticsAggregateService implements ApplicationRunner {
         });
     }
 
-    /**
-     * Rolls up a single date. Uses a non-blocking lock attempt: if a backfill is already running,
-     * this cycle is skipped rather than queued, because the next collection cycle 30 seconds later
-     * will roll the same date up again anyway.
-     */
-    public void refreshDate(LocalDate date) {
-        if (date == null) return;
-        transactions.executeWithoutResult(status -> {
-            if (!tryLockAggregates()) {
-                log.debug("Aggregate refresh for {} skipped: another refresh holds the lock", date);
-                return;
+    // ── incremental roll-up ───────────────────────────────────────────────────
+    //
+    // The collector used to re-derive the whole current day after every cycle: three INSERT …
+    // SELECTs over every snapshot captured so far, 2 880 times a day, each joining trip on a nested
+    // loop. That single pattern accounted for 658 million trip_pkey lookups in six weeks and grew
+    // linearly through the day. Cycles now only report which trips they touched; a timer rolls
+    // those up, restricted to the aggregate rows those trips can possibly have changed.
+
+    /** Trips changed since the last roll-up, per service date. Guarded by {@link #dirtyLock}. */
+    private static final class DirtyDay {
+        final Set<Long> tripIds = new HashSet<>();
+        LocalDateTime earliest;
+    }
+
+    private final Object dirtyLock = new Object();
+    private final Map<LocalDate, DirtyDay> dirty = new HashMap<>();
+
+    /** Called by the collector after each persisted batch. Cheap: a set union under a lock. */
+    public void markDirty(LocalDate date, Set<Long> tripIds, LocalDateTime capturedAt) {
+        if (date == null || tripIds == null || tripIds.isEmpty()) return;
+        synchronized (dirtyLock) {
+            DirtyDay day = dirty.computeIfAbsent(date, k -> new DirtyDay());
+            day.tripIds.addAll(tripIds);
+            if (day.earliest == null || capturedAt.isBefore(day.earliest)) day.earliest = capturedAt;
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${irishrail.analytics.aggregates.refresh-ms:60000}")
+    public void flushDirty() {
+        Map<LocalDate, DirtyDay> work;
+        synchronized (dirtyLock) {
+            if (dirty.isEmpty()) return;
+            work = new HashMap<>(dirty);
+            dirty.clear();
+        }
+        for (Map.Entry<LocalDate, DirtyDay> entry : work.entrySet()) {
+            try {
+                if (!refreshIncremental(entry.getKey(), entry.getValue())) requeue(entry.getKey(), entry.getValue());
+            } catch (RuntimeException e) {
+                log.warn("Aggregate roll-up for {} failed, will retry: {}", entry.getKey(), e.getMessage());
+                requeue(entry.getKey(), entry.getValue());
             }
-            LocalDate next = date.plusDays(1);
-            insertStationRouteAggregates(date, next);
-            insertTripAggregates(date, next);
-            insertHourlyAggregates(date, next);
+        }
+    }
+
+    /** @return false when another writer (the startup backfill) holds the lock; nothing was lost. */
+    private boolean refreshIncremental(LocalDate date, DirtyDay day) {
+        long startedAt = System.nanoTime();
+        Boolean done = transactions.execute(status -> {
+            if (!tryLockAggregates()) return false;
+            Window window = new Window(date, date.plusDays(1),
+                    Set.copyOf(day.tripIds), day.earliest.truncatedTo(ChronoUnit.HOURS));
+            int stationRows = insertStationRouteAggregates(window);
+            int tripRows = insertTripAggregates(window);
+            int hourRows = insertHourlyAggregates(window);
+            log.debug("Aggregates {}: {} trips -> {} station-route, {} trip, {} hourly rows in {} ms",
+                    date, day.tripIds.size(), stationRows, tripRows, hourRows,
+                    (System.nanoTime() - startedAt) / 1_000_000);
+            return true;
         });
+        return Boolean.TRUE.equals(done);
+    }
+
+    private void requeue(LocalDate date, DirtyDay day) {
+        markDirty(date, day.tripIds, day.earliest);
+    }
+
+    /**
+     * What one roll-up pass reads. {@link #all()} is the full backfill; the incremental form limits
+     * each aggregate to the rows a set of changed trips can have altered:
+     * <ul>
+     *   <li>trip metrics are keyed by trip, so {@code trip_id IN (…)} is exact;</li>
+     *   <li>station-route metrics sum across trips, so every (station, origin, destination) group any
+     *       changed trip appears in is recomputed in full — a superset, never a partial total;</li>
+     *   <li>hourly metrics are recomputed from the hour of the earliest changed row onwards.</li>
+     * </ul>
+     */
+    private record Window(LocalDate from, LocalDate to, Set<Long> tripIds, LocalDateTime hourStart) {
+        static Window all() { return new Window(null, null, null, null); }
+
+        boolean incremental() { return tripIds != null && !tripIds.isEmpty(); }
+
+        String dateFilter() {
+            return from == null || to == null ? "" : " AND s.captured_at >= :fromTs AND s.captured_at < :toTs";
+        }
+
+        String tripFilter() {
+            return incremental() ? " AND s.trip_id IN (:tripIds)" : "";
+        }
+
+        String stationRouteFilter() {
+            if (!incremental()) return "";
+            // Leading newline: this follows dateFilter(), whose last token is a bind parameter.
+            return """
+
+                     AND (UPPER(s.station_code),
+                          COALESCE(NULLIF(t.origin, ''), 'Unknown'),
+                          COALESCE(NULLIF(t.destination, ''), 'Unknown')) IN (
+                        SELECT UPPER(s2.station_code),
+                               COALESCE(NULLIF(t2.origin, ''), 'Unknown'),
+                               COALESCE(NULLIF(t2.destination, ''), 'Unknown')
+                        FROM trip_station_snapshot s2
+                        JOIN trip t2 ON t2.id = s2.trip_id
+                        WHERE s2.trip_id IN (:tripIds)
+                          AND s2.captured_at >= :fromTs AND s2.captured_at < :toTs)""";
+        }
+
+        String hourFilter() {
+            return hourStart == null ? "" : " AND s.captured_at >= :hourStart";
+        }
     }
 
     /** Trims aggregate history, on its own cutoff independent of raw retention. */
@@ -583,7 +682,7 @@ public class AnalyticsAggregateService implements ApplicationRunner {
 
     // ── aggregate builders ────────────────────────────────────────────────────
 
-    private int insertStationRouteAggregates(LocalDate from, LocalDate to) {
+    private int insertStationRouteAggregates(Window w) {
         String sql = """
                 INSERT INTO daily_station_route_metrics (
                     service_date, service_scope, station_code, station_full_name, origin, destination,
@@ -645,12 +744,12 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                     updated_at = EXCLUDED.updated_at
                 """
                 .replace("{scope}", SCOPE_EXPR)
-                .replace("{dateFilter}", dateFilter(from, to));
+                .replace("{dateFilter}", w.dateFilter() + w.stationRouteFilter());
 
-        return jdbc.update(sql, aggregateParams(from, to));
+        return jdbc.update(sql, aggregateParams(w));
     }
 
-    private int insertTripAggregates(LocalDate from, LocalDate to) {
+    private int insertTripAggregates(Window w) {
         String sql = """
                 INSERT INTO daily_trip_metrics (
                     service_date, service_scope, trip_id, train_code, train_date, direction,
@@ -718,12 +817,12 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                     updated_at = EXCLUDED.updated_at
                 """
                 .replace("{scope}", SCOPE_EXPR)
-                .replace("{dateFilter}", dateFilter(from, to));
+                .replace("{dateFilter}", w.dateFilter() + w.tripFilter());
 
-        return jdbc.update(sql, aggregateParams(from, to));
+        return jdbc.update(sql, aggregateParams(w));
     }
 
-    private int insertHourlyAggregates(LocalDate from, LocalDate to) {
+    private int insertHourlyAggregates(Window w) {
         String sql = """
                 INSERT INTO daily_hourly_metrics (
                     service_date, service_scope, hour_of_day,
@@ -751,9 +850,9 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                     updated_at = EXCLUDED.updated_at
                 """
                 .replace("{scope}", SCOPE_EXPR)
-                .replace("{dateFilter}", dateFilter(from, to));
+                .replace("{dateFilter}", w.dateFilter() + w.hourFilter());
 
-        return jdbc.update(sql, aggregateParams(from, to));
+        return jdbc.update(sql, aggregateParams(w));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -765,19 +864,16 @@ public class AnalyticsAggregateService implements ApplicationRunner {
         return ONE_SCOPE_FILTER;
     }
 
-    private String dateFilter(LocalDate from, LocalDate to) {
-        if (from == null || to == null) return "";
-        return "AND s.captured_at >= :fromTs AND s.captured_at < :toTs";
-    }
-
-    private MapSqlParameterSource aggregateParams(LocalDate from, LocalDate to) {
+    private MapSqlParameterSource aggregateParams(Window w) {
         MapSqlParameterSource p = params()
                 .addValue("minDelay", DELAYED_MIN)
                 .addValue("maxStatDelay", DelayLimits.MAX_STAT_DELAY_MINUTES);
-        if (from != null && to != null) {
-            p.addValue("fromTs", from.atStartOfDay());
-            p.addValue("toTs", to.atStartOfDay());
+        if (w.from() != null && w.to() != null) {
+            p.addValue("fromTs", w.from().atStartOfDay());
+            p.addValue("toTs", w.to().atStartOfDay());
         }
+        if (w.incremental()) p.addValue("tripIds", w.tripIds());
+        if (w.hourStart() != null) p.addValue("hourStart", w.hourStart());
         return p;
     }
 

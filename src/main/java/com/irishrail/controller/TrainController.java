@@ -307,7 +307,10 @@ public class TrainController {
     @ResponseBody
     public ResponseEntity<List<TrainInfo>> getTrainsJson(
             @RequestParam(defaultValue = DEFAULT_STATION) String stationCode) {
-        return ResponseEntity.ok(irishRailService.getTrainsByStation(stationCode));
+        // Served from the collector's board cache; the browser may reuse it for a few seconds too.
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofSeconds(5)))
+                .body(irishRailService.getTrainsByStation(stationCode));
     }
 
     @GetMapping("/api/stations")
@@ -449,13 +452,16 @@ public class TrainController {
         String cacheKey = analyticsOverviewCacheKey(from, to, stationCode, period);
         long now = System.currentTimeMillis();
         CachedPayload cached = analyticsOverviewCache.get(cacheKey);
+        // Server-side the payload is reused for 10 s; letting the browser keep it for a few seconds
+        // absorbs a reload or a scope flick without ever showing a stale aggregate.
+        CacheControl browserCache = CacheControl.maxAge(Duration.ofSeconds(5));
         if (cached != null && now - cached.createdAtMs() <= analyticsOverviewCacheMs) {
-            return ResponseEntity.ok(cached.payload());
+            return ResponseEntity.ok().cacheControl(browserCache).body(cached.payload());
         }
 
         Map<String, Object> payload = buildAnalyticsPayload(from, to, stationCode, period);
         analyticsOverviewCache.put(cacheKey, new CachedPayload(payload, now));
-        return ResponseEntity.ok(payload);
+        return ResponseEntity.ok().cacheControl(browserCache).body(payload);
     }
 
     @GetMapping("/api/events")
