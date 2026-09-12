@@ -1,16 +1,23 @@
 package com.irishrail.service;
 
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.irishrail.config.IrishRailProperties;
 import com.irishrail.model.Station;
 import com.irishrail.model.StationList;
 import com.irishrail.model.TrainInfo;
 import com.irishrail.model.TrainInfoList;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -19,7 +26,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /** Thin client over the Irish Rail realtime API: station lists and per-station departure boards. */
@@ -28,72 +34,73 @@ public class IrishRailService {
 
     private static final Logger log = LoggerFactory.getLogger(IrishRailService.class);
 
-    @Value("${irishrail.api.all-stations-url}")
-    private String allStationsUrl;
-
-    @Value("${irishrail.api.station-list-base-url:https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=}")
-    private String stationListBaseUrl;
-
-    @Value("${irishrail.api.station-data-base-url}")
-    private String stationDataBaseUrl;
-
-    @Value("${irishrail.tracked-station-codes:CNLLY,HSTON}")
-    private String trackedStationCodes;
-
-    @Value("${irishrail.connolly.collection-station-types:D}")
-    private String connollyCollectionStationTypes;
-
-    @Value("${irishrail.heuston.collection-station-types:M,S}")
-    private String heustonCollectionStationTypes;
-
-    @Value("${irishrail.api.station-cache-ms:3600000}")
-    private long stationCacheMs;
-
-    @Value("${irishrail.api.board-cache-ms:35000}")
-    private long boardCacheMs;
-
-    private final RestTemplate restTemplate;
-    private final XmlMapper xmlMapper = new XmlMapper();
+    private final RestClient restClient;
+    private final XmlMapper xmlMapper;
+    private final IrishRailProperties properties;
+    private final MeterRegistry meters;
 
     /**
      * Station lists change a few times a year but were re-fetched on every page load — three
      * upstream calls per view of /overview, /get, /map or /journey.
+     *
+     * <p>Deliberately no {@code expireAfterWrite}: {@link #fallback} serves an arbitrarily old list
+     * when the API is down, and a list that is months stale still beats an empty station picker.
+     * Freshness is decided by the stored timestamp; Caffeine is here for the size bound.
      */
-    private final ConcurrentHashMap<String, CachedStations> stationCache = new ConcurrentHashMap<>();
-
-    public IrishRailService(RestTemplate irishRailRestTemplate) {
-        this.restTemplate = irishRailRestTemplate;
-    }
-
-    private record CachedStations(List<Station> stations, long loadedAtMs) {}
+    private final Cache<String, CachedStations> stationCache;
 
     /**
      * Departure boards, keyed by station and Heuston filter. The collector refreshes every tracked
      * station each cycle through {@link #fetchTrainsByStation}; page requests read that copy via
      * {@link #getTrainsByStation}. Before, every open tab of the live board was its own upstream
      * poll of a station the collector had fetched seconds earlier.
+     *
+     * <p>This was an unbounded {@code ConcurrentHashMap} whose keys came straight from the
+     * {@code stationCode} request parameter, so {@code /api/trains?stationCode=<anything>} grew it
+     * without limit. It is now size-bounded, and callers validate the code first.
      */
-    private record CachedBoard(List<TrainInfo> trains, long loadedAtMs) {}
+    private final Cache<String, CachedBoard> boardCache;
 
-    private final ConcurrentHashMap<String, CachedBoard> boardCache = new ConcurrentHashMap<>();
+    public IrishRailService(RestClient irishRailRestClient,
+                            XmlMapper irishRailXmlMapper,
+                            IrishRailProperties properties,
+                            MeterRegistry meters) {
+        this.restClient = irishRailRestClient;
+        this.xmlMapper = irishRailXmlMapper;
+        this.properties = properties;
+        this.meters = meters;
+
+        this.stationCache = Caffeine.newBuilder().maximumSize(32).recordStats().build();
+        this.boardCache = Caffeine.newBuilder()
+                .maximumSize(properties.api().maxCachedBoards())
+                // Twice the TTL, because staleBoardOrEmpty() still serves an entry one cycle past
+                // its freshness window when upstream fails.
+                .expireAfterWrite(Duration.ofMillis(properties.api().boardCacheMs() * 2))
+                .recordStats()
+                .build();
+    }
+
+    private record CachedStations(List<Station> stations, long loadedAtMs) {}
+
+    private record CachedBoard(List<TrainInfo> trains, long loadedAtMs) {}
 
     /** Every station on the network ({@code StationType=A}), not just the collected routes. */
     public List<Station> getAllStations() {
-        return fetchStations(stationListBaseUrl + "A", "A");
+        return fetchStations(properties.api().stationListBaseUrl() + "A", "A");
     }
 
     public List<Station> getAllDartStations() {
-        return fetchStations(allStationsUrl, "DART");
+        return fetchStations(properties.api().allStationsUrl(), "DART");
     }
 
     public List<Station> getStationsByType(String stationType) {
         String type = stationType == null ? "" : stationType.trim().toUpperCase();
         if (type.isBlank()) return Collections.emptyList();
-        return fetchStations(stationListBaseUrl + type, type);
+        return fetchStations(properties.api().stationListBaseUrl() + type, type);
     }
 
     public List<Station> getTrackedStations() {
-        Set<String> trackedCodes = List.of(trackedStationCodes.split(",")).stream()
+        Set<String> trackedCodes = properties.trackedStationCodes().stream()
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .map(String::toUpperCase)
@@ -115,7 +122,7 @@ public class IrishRailService {
     }
 
     public List<Station> getConnollyCollectionStations() {
-        List<Station> stations = getStationsByTypes(connollyCollectionStationTypes);
+        List<Station> stations = getStationsByTypes(properties.connolly().collectionStationTypes());
         if (stations.stream().noneMatch(s -> "CNLLY".equalsIgnoreCase(s.getStationCode()))) {
             stations.add(connollyStation());
         }
@@ -123,7 +130,7 @@ public class IrishRailService {
     }
 
     public List<Station> getHeustonCollectionStations() {
-        List<Station> stations = getStationsByTypes(heustonCollectionStationTypes);
+        List<Station> stations = getStationsByTypes(properties.heuston().collectionStationTypes());
         if (stations.stream().noneMatch(s -> "HSTON".equalsIgnoreCase(s.getStationCode()))) {
             stations.add(heustonStation());
         }
@@ -146,8 +153,8 @@ public class IrishRailService {
 
     /** Serves the collector's copy when it is fresh enough; otherwise goes upstream. */
     public List<TrainInfo> getTrainsByStation(String stationCode, boolean includeHeustonTrains) {
-        CachedBoard cached = boardCache.get(boardKey(stationCode, includeHeustonTrains));
-        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= boardCacheMs) {
+        CachedBoard cached = boardCache.getIfPresent(boardKey(stationCode, includeHeustonTrains));
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= properties.api().boardCacheMs()) {
             return cached.trains();
         }
         return fetchTrainsByStation(stationCode, includeHeustonTrains);
@@ -156,9 +163,10 @@ public class IrishRailService {
     /** Always goes upstream and refreshes the cache. The collector's entry point. */
     public List<TrainInfo> fetchTrainsByStation(String stationCode, boolean includeHeustonTrains) {
         String key = boardKey(stationCode, includeHeustonTrains);
+        Timer.Sample sample = Timer.start(meters);
+        String outcome = "error";
         try {
-            String url = stationDataBaseUrl + stationCode;
-            String xml = restTemplate.getForObject(url, String.class);
+            String xml = fetch(stationDataUrl(stationCode));
             if (xml == null || xml.isBlank()) return staleBoardOrEmpty(key);
             TrainInfoList list = xmlMapper.readValue(xml, TrainInfoList.class);
             List<TrainInfo> trains = list.getTrains();
@@ -167,10 +175,16 @@ public class IrishRailService {
                     .filter(t -> includeHeustonTrains || (!containsHeuston(t.getOrigin()) && !containsHeuston(t.getDestination())))
                     .collect(Collectors.toUnmodifiableList());
             boardCache.put(key, new CachedBoard(filtered, System.currentTimeMillis()));
+            outcome = "success";
             return filtered;
         } catch (Exception e) {
-            log.error("Falha ao buscar dados da estação {}: {}", stationCode, e.getMessage());
+            log.error("Failed to fetch station board for {}: {}", stationCode, e.getMessage());
             return staleBoardOrEmpty(key);
+        } finally {
+            sample.stop(Timer.builder("irishrail.upstream")
+                    .tag("endpoint", "station-board")
+                    .tag("outcome", outcome)
+                    .register(meters));
         }
     }
 
@@ -179,11 +193,32 @@ public class IrishRailService {
      * that it would be showing trains that have long since left.
      */
     private List<TrainInfo> staleBoardOrEmpty(String key) {
-        CachedBoard cached = boardCache.get(key);
-        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= boardCacheMs * 2) {
+        CachedBoard cached = boardCache.getIfPresent(key);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= properties.api().boardCacheMs() * 2) {
             return cached.trains();
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * Departure-board URL for one station.
+     *
+     * <p>The code used to be concatenated straight onto the configured base URL. Building the URI
+     * encodes it instead, so a code carrying {@code &} cannot append parameters to the upstream
+     * query and a {@code {} } cannot be read as an unresolved {@code RestTemplate} URI-template
+     * placeholder (which throws rather than fetching).
+     *
+     * <p>The configured value historically ended in {@code &StationCode=}; that suffix is stripped
+     * so an old override does not produce the parameter twice.
+     */
+    String stationDataUrl(String stationCode) {
+        String base = properties.api().stationDataBaseUrl().trim();
+        int marker = base.toUpperCase(Locale.ROOT).indexOf("STATIONCODE=");
+        if (marker > 0) base = base.substring(0, marker).replaceAll("[?&]+$", "");
+        return UriComponentsBuilder.fromUriString(base)
+                .queryParam("StationCode", normalizeCode(stationCode))
+                .build()
+                .toUriString();
     }
 
     private static String boardKey(String stationCode, boolean includeHeustonTrains) {
@@ -198,9 +233,9 @@ public class IrishRailService {
         return train != null && (containsHeuston(train.getOrigin()) || containsHeuston(train.getDestination()));
     }
 
-    private List<Station> getStationsByTypes(String stationTypes) {
-        if (stationTypes == null || stationTypes.isBlank()) return new ArrayList<>();
-        List<Station> stations = List.of(stationTypes.split(",")).stream()
+    private List<Station> getStationsByTypes(List<String> stationTypes) {
+        if (stationTypes == null || stationTypes.isEmpty()) return new ArrayList<>();
+        List<Station> stations = stationTypes.stream()
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .flatMap(type -> getStationsByType(type).stream())
@@ -209,13 +244,15 @@ public class IrishRailService {
     }
 
     private List<Station> fetchStations(String url, String label) {
-        CachedStations cached = stationCache.get(url);
-        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= stationCacheMs) {
+        CachedStations cached = stationCache.getIfPresent(url);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= properties.api().stationCacheMs()) {
             return cached.stations();
         }
 
+        Timer.Sample sample = Timer.start(meters);
+        String outcome = "error";
         try {
-            String xml = restTemplate.getForObject(url, String.class);
+            String xml = fetch(url);
             if (xml == null || xml.isBlank()) return fallback(cached);
             StationList list = xmlMapper.readValue(xml, StationList.class);
             List<Station> stations = list.getStations();
@@ -223,11 +260,26 @@ public class IrishRailService {
 
             List<Station> immutable = List.copyOf(stations);
             stationCache.put(url, new CachedStations(immutable, System.currentTimeMillis()));
+            outcome = "success";
             return immutable;
         } catch (Exception e) {
-            log.error("Falha ao buscar estações {}: {}", label, e.getMessage());
+            log.error("Failed to fetch station list {}: {}", label, e.getMessage());
             return fallback(cached);
+        } finally {
+            sample.stop(Timer.builder("irishrail.upstream")
+                    .tag("endpoint", "station-list")
+                    .tag("outcome", outcome)
+                    .register(meters));
         }
+    }
+
+    /**
+     * The URL is already fully built and encoded, so it is passed as a {@link URI}: handing a
+     * string to {@code uri(...)} would have it read as a URI template, where any brace in the
+     * value becomes a placeholder to expand.
+     */
+    private String fetch(String url) {
+        return restClient.get().uri(URI.create(url)).retrieve().body(String.class);
     }
 
     /** Stale station names beat no station names — the list is near-static. */

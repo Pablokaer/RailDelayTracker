@@ -73,13 +73,16 @@ a guess.
 | Layer | Technology |
 |---|---|
 | Language | Java 21 |
-| Framework | Spring Boot 3.2.5 |
-| Web / REST | Spring Web (RestTemplate, SseEmitter) |
-| Persistence | Spring Data JPA + PostgreSQL |
+| Framework | Spring Boot 3.5.16 |
+| Web / REST | Spring Web (RestClient, SseEmitter) |
+| Persistence | Spring Data JPA + PostgreSQL, schema versioned with Flyway |
 | HTML Templates | Thymeleaf |
 | API Parsing | Jackson XML (`jackson-dataformat-xml`) |
+| Caching | Caffeine (bounded, self-evicting) |
+| Observability | Spring Boot Actuator + Micrometer/Prometheus |
 | Frontend | Bootstrap 5 + Chart.js 4 |
 | Build | Maven 3.8+ |
+| Tests | JUnit 5, Mockito, Testcontainers (PostgreSQL) |
 
 ---
 
@@ -92,6 +95,14 @@ a guess.
 ```sql
 CREATE DATABASE irishrail;
 ```
+
+An empty database is enough: **Flyway builds the schema on first start**
+(`src/main/resources/db/migration`). Hibernate then runs with `ddl-auto=validate` and refuses to
+start if the entities and the migrated schema disagree.
+
+Databases created by the earlier `ddl-auto=update` are picked up as-is — `baseline-on-migrate`
+records them at version 0 and the migrations, which are all `CREATE ... IF NOT EXISTS`, apply as a
+no-op.
 
 ---
 
@@ -124,7 +135,8 @@ spring.task.scheduling.pool.size=6
 
 irishrail.api.all-stations-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=D
 irishrail.api.station-list-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getAllStationsXML_WithStationType?StationType=
-irishrail.api.station-data-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML_WithNumMins?NumMins=90&StationCode=
+# The station code is appended as an encoded query parameter, so this value stops at NumMins.
+irishrail.api.station-data-base-url=https://api.irishrail.ie/realtime/realtime.asmx/getStationDataByCodeXML_WithNumMins?NumMins=90
 irishrail.api.current-trains-url=https://api.irishrail.ie/realtime/realtime.asmx/getCurrentTrainsXML
 
 # Mandatory — the JDK default is infinite, which lets a slow upstream pin threads.
@@ -146,6 +158,12 @@ irishrail.analytics.aggregates.backfill-on-startup=true
 irishrail.analytics.aggregates.refresh-ms=60000
 
 irishrail.sse.heartbeat-ms=25000
+irishrail.sse.max-clients=500
+
+# Token bucket in front of /api/**, per client IP, per instance.
+irishrail.rate-limit.enabled=true
+irishrail.rate-limit.requests-per-minute=120
+irishrail.rate-limit.burst=60
 
 # tile.openstreetmap.org is not permitted for production traffic by the OSMF tile usage policy,
 # and CARTO's basemaps need an API key since Aug 2026 (they return a placeholder image otherwise).
@@ -156,6 +174,10 @@ irishrail.map.refresh-ms=10000
 
 irishrail.retention.days=30
 ```
+
+Every `irishrail.*` key is bound to the validated record tree in
+`config/IrishRailProperties.java`. A misspelled key or an out-of-range value (a negative pool size,
+a zero timeout) fails the boot instead of silently falling back to a default.
 
 ---
 
@@ -187,9 +209,21 @@ irishrail.retention.days=30
 | `GET /api/analytics/summary` | Analytics summary with date filter |
 | `GET /api/analytics/recent` | Recent delay snapshots |
 | `GET /api/events` | SSE — real-time updates (25 s heartbeat) |
+| `GET /actuator/health` | Liveness / readiness |
+| `GET /actuator/prometheus` | Metrics scrape endpoint |
 
 `/api/train-positions` is served entirely from an in-memory snapshot that a scheduled task
 refreshes, so the upstream call rate is fixed regardless of how many clients have the map open.
+
+**Input handling.** `stationCode` is validated against the station directory before it reaches a
+cache key or the upstream URL, and `from`/`to` are bound as ISO dates. Anything else is a `400`
+with an RFC 7807 body rather than a silently widened query. `/api/**` is throttled per client IP;
+over the limit the answer is `429` with `Retry-After`.
+
+**Metrics published** (beyond the JVM and HTTP defaults): `irishrail.upstream` (timer, tagged by
+endpoint and outcome), `irishrail.collector.cycle`, `irishrail.collector.snapshots.saved`,
+`irishrail.collector.state.entries`, `irishrail.sse.subscribers`, `irishrail.positions.tracked`,
+`irishrail.ratelimit.rejected`.
 
 ---
 
@@ -205,8 +239,20 @@ refreshes, so the upstream call rate is fixed regardless of how many clients hav
 
 The three `daily_*` tables are written with UPSERTs, so re-running a date is idempotent. They are
 **durable**: nothing drops or truncates them, which is what allows the raw snapshots to be trimmed
-without losing history. Adding a column therefore needs an explicit
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `AnalyticsAggregateService.ensureSchema()`.
+without losing history. Adding a column therefore needs a new Flyway migration — the DDL used to
+live in an `ensureSchema()` method that ran on every boot.
+
+### Migrations
+
+| File | Contents |
+|---|---|
+| `V1__baseline_core_tables.sql` | `trip`, `trip_station_snapshot`, their key and FK |
+| `V2__analytics_aggregate_tables.sql` | The three `daily_*` tables and their indexes |
+| `V3__query_performance_indexes.sql` | BRIN, partial and expression indexes; autovacuum tuning |
+
+The delayed-trip threshold (5 minutes) is baked into the partial index in `V3`, and a migration
+cannot read a Java constant. `DelayCategorySqlTest` fails the build if
+`DelayLimits.DELAYED_THRESHOLD_MINUTES` is changed without a new migration to rebuild that index.
 
 ---
 
@@ -247,31 +293,42 @@ and the startup backfill can always safely re-derive any day still present.
 src/main/java/com/irishrail/
   IrishRailApplication.java
   config/
-    RestClientConfig.java        # RestTemplate with mandatory timeouts
-    CollectorConfig.java         # Bounded pool for concurrent station fetches
+    IrishRailProperties.java     # Every irishrail.* setting, validated, one tree
+    RestClientConfig.java        # Pooled HTTP client with mandatory timeouts + shared XmlMapper
+    CollectorConfig.java         # Bounded pool for station fetches; SSE broadcast worker
+    SchedulingConfig.java        # @EnableScheduling, switchable so tests can load a context
   controller/
-    TrainController.java
+    PageController.java          # Server-rendered pages
+    ApiController.java           # JSON + SSE endpoints
+  web/
+    StationCodes.java            # Validates station codes at the edge
+    ApiExceptionHandler.java     # RFC 7807 problem responses, scoped to the API
+    SecurityHeadersFilter.java   # CSP, nosniff, referrer policy, frame options
+    RateLimitFilter.java         # Per-client token bucket on /api/**
   model/
     TrainInfo.java
     TrainPosition.java           # getCurrentTrainsXML wire format
     LiveTrain.java               # What the map consumes
+    AnalyticsView.java           # One analytics answer; the JSON contract for overview.js
+    JourneyOptions.java          # Typed /api/journey-options payload
+    TrainPositionsView.java      # Typed /api/train-positions payload
+    StationPoint.java
     TrainHistory.java
     Trip.java
     TripStationSnapshot.java
-    DelayCategory.java
+    DelayCategory.java           # Delay bands; also generates the aggregate SQL
     ...
   repository/
     TripRepository.java
     TripStationSnapshotRepository.java
-    TrainDelayRepository.java
   service/
-    IrishRailService.java        # Irish Rail API client, station lists cached 1 h
+    IrishRailService.java        # Irish Rail API client; Caffeine station/board caches
     StationDirectory.java        # Exact name → station index over all 171 stations
     TrainPositionService.java    # Live positions, heading resolution, scheduled refresh
     DelayTrackingService.java    # Analytics queries against the database
+    AnalyticsQueryService.java   # Assembles + caches one dashboard, for page and API alike
     TrainDelayScheduler.java     # Concurrent collection every 30 seconds
     AnalyticsAggregateService.java
-    DatabaseIndexInitializer.java
     SnapshotEventService.java    # SSE for live updates
   util/
     PublicMessageParser.java     # Parses the three-line PublicMessage blob
@@ -279,6 +336,7 @@ src/main/java/com/irishrail/
 
 src/main/resources/
   application.properties
+  db/migration/                  # Flyway — the only place schema DDL lives
   static/
     css/app.css                  # Shared tokens + page chrome
     js/app.js                    # escapeHtml, changeView, visibility-aware polling
@@ -289,5 +347,38 @@ src/main/resources/
     journey.html
     map.html
 
-src/test/java/com/irishrail/     # 28 unit tests, no database required
+src/test/java/com/irishrail/
+  ...Test.java                   # Unit and web-slice tests; no database, run by surefire
+  ...IT.java                     # Need PostgreSQL; run by failsafe under `mvn verify`
+  support/PostgresIntegrationTest.java
 ```
+
+---
+
+## Testing
+
+```bash
+mvn test      # unit + web-slice tests, no database needed
+mvn verify    # the above plus the integration tests
+```
+
+The integration tests need a real PostgreSQL, because the analytics layer is not portable SQL
+(`DISTINCT ON`, `ON CONFLICT`, BRIN and partial indexes, advisory locks). They get one from
+Testcontainers when Docker is available, and **skip themselves when it is not**, so `mvn verify`
+stays green anywhere.
+
+On a machine without Docker, point them at an existing server instead — the named database is
+written to and truncated, so do not aim this at one you care about:
+
+```bash
+mvn verify -Dirishrail.test.datasource.url=jdbc:postgresql://localhost:5432/irishrail_test
+```
+
+What the integration suite actually pins down:
+
+- the Flyway migrations build a working schema from nothing, and Hibernate's `validate` agrees
+  with the result — which is the only check that the migrations and the `@Entity` classes still
+  describe the same tables;
+- the **incremental** roll-up the collector triggers produces the same aggregates as the full
+  backfill. Nothing else compares the two, and the collector only ever uses the incremental path;
+- aggregate history survives the deletion of the raw snapshots it was derived from.

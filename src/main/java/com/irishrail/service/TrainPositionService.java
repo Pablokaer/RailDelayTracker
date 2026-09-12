@@ -1,6 +1,7 @@
 package com.irishrail.service;
 
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.irishrail.config.IrishRailProperties;
 import com.irishrail.model.DelayCategory;
 import com.irishrail.model.LiveTrain;
 import com.irishrail.model.Station;
@@ -9,13 +10,15 @@ import com.irishrail.model.TrainPositionList;
 import com.irishrail.util.GeoUtils;
 import com.irishrail.util.PublicMessageParser;
 import com.irishrail.util.PublicMessageParser.ParsedMessage;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,20 +55,27 @@ public class TrainPositionService {
      */
     private static final long MOVEMENT_HEADING_TTL_MS = 180_000L;
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final StationDirectory stationDirectory;
-    private final XmlMapper xmlMapper = new XmlMapper();
-
-    @Value("${irishrail.api.current-trains-url:https://api.irishrail.ie/realtime/realtime.asmx/getCurrentTrainsXML}")
-    private String currentTrainsUrl;
+    private final XmlMapper xmlMapper;
+    private final IrishRailProperties properties;
+    private final MeterRegistry meters;
 
     private volatile Snapshot snapshot = Snapshot.empty();
     private final Map<String, TrackPoint> lastSeenPositions = new ConcurrentHashMap<>();
     private final AtomicBoolean refreshing = new AtomicBoolean(false);
 
-    public TrainPositionService(RestTemplate irishRailRestTemplate, StationDirectory stationDirectory) {
-        this.restTemplate = irishRailRestTemplate;
+    public TrainPositionService(RestClient irishRailRestClient,
+                                StationDirectory stationDirectory,
+                                XmlMapper irishRailXmlMapper,
+                                IrishRailProperties properties,
+                                MeterRegistry meters) {
+        this.restClient = irishRailRestClient;
         this.stationDirectory = stationDirectory;
+        this.xmlMapper = irishRailXmlMapper;
+        this.properties = properties;
+        this.meters = meters;
+        meters.gauge("irishrail.positions.tracked", lastSeenPositions, Map::size);
     }
 
     /**
@@ -115,18 +125,29 @@ public class TrainPositionService {
     }
 
     private List<TrainPosition> fetchPositions() {
+        Timer.Sample sample = Timer.start(meters);
+        String outcome = "error";
         try {
-            String xml = restTemplate.getForObject(currentTrainsUrl, String.class);
+            String xml = restClient.get()
+                    .uri(URI.create(properties.api().currentTrainsUrl()))
+                    .retrieve()
+                    .body(String.class);
             if (xml == null || xml.isBlank()) {
                 log.warn("Train positions: empty response from Irish Rail");
                 return null;
             }
             TrainPositionList list = xmlMapper.readValue(xml, TrainPositionList.class);
             List<TrainPosition> trains = list.getTrains();
+            outcome = "success";
             return trains == null ? List.of() : trains;
         } catch (Exception e) {
             log.error("Train positions: fetch failed ({})", e.getMessage());
             return null;
+        } finally {
+            sample.stop(Timer.builder("irishrail.upstream")
+                    .tag("endpoint", "train-positions")
+                    .tag("outcome", outcome)
+                    .register(meters));
         }
     }
 

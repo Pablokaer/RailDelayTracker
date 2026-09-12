@@ -1,5 +1,6 @@
 package com.irishrail.config;
 
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -8,11 +9,10 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 /**
  * Irish Rail is a third-party API we cannot control. Without explicit timeouts a slow
@@ -28,12 +28,10 @@ import org.springframework.web.client.RestTemplate;
 public class RestClientConfig {
 
     @Bean(destroyMethod = "close")
-    public CloseableHttpClient irishRailHttpClient(
-            @Value("${irishrail.api.connect-timeout-ms:4000}") long connectTimeoutMs,
-            @Value("${irishrail.api.read-timeout-ms:8000}") long readTimeoutMs,
-            @Value("${irishrail.collector.threads:8}") int collectorThreads) {
-
-        int poolSize = collectorThreads + 4;
+    public CloseableHttpClient irishRailHttpClient(IrishRailProperties properties) {
+        long connectTimeoutMs = properties.api().connectTimeoutMs();
+        long readTimeoutMs = properties.api().readTimeoutMs();
+        int poolSize = properties.collector().threads() + 4;
 
         PoolingHttpClientConnectionManager connections = PoolingHttpClientConnectionManagerBuilder.create()
                 .setMaxConnTotal(poolSize)
@@ -58,8 +56,28 @@ public class RestClientConfig {
                 .build();
     }
 
+    /**
+     * {@code RestTemplate} is in maintenance mode; {@code RestClient} is its synchronous successor
+     * and wraps the same pooled request factory, so the connection pool and the timeouts above are
+     * unchanged.
+     */
     @Bean
-    public RestTemplate irishRailRestTemplate(CloseableHttpClient irishRailHttpClient) {
-        return new RestTemplate(new HttpComponentsClientHttpRequestFactory(irishRailHttpClient));
+    public RestClient irishRailRestClient(CloseableHttpClient irishRailHttpClient) {
+        return RestClient.builder()
+                .requestFactory(new HttpComponentsClientHttpRequestFactory(irishRailHttpClient))
+                .build();
+    }
+
+    /**
+     * One shared mapper instead of three.
+     *
+     * <p>{@code IrishRailService}, {@code TrainPositionService} and {@code TrainRouteService} each
+     * built their own {@code new XmlMapper()}. It is thread-safe once configured and expensive to
+     * construct (it builds and caches a serializer graph per type), so the copies bought nothing
+     * and warmed their caches separately.
+     */
+    @Bean
+    public XmlMapper irishRailXmlMapper() {
+        return new XmlMapper();
     }
 }

@@ -1,5 +1,6 @@
 package com.irishrail.service;
 
+import com.irishrail.config.IrishRailProperties;
 import com.irishrail.model.DashboardSummary;
 import com.irishrail.model.DelayCategory;
 import com.irishrail.model.DelayLimits;
@@ -32,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Rolls raw snapshots up into three daily aggregate tables and answers every date-ranged analytics
@@ -64,9 +66,9 @@ import java.util.Map;
  * <p>All three are written with UPSERTs keyed on their grain, so re-running a date is idempotent and
  * never touches another date's rows.
  *
- * <p><strong>Schema changes need care:</strong> these tables are now durable, so adding a column
- * means an {@code ALTER TABLE ... ADD COLUMN IF NOT EXISTS} in {@link #ensureSchema()} rather than
- * relying on a drop-and-rebuild.
+ * <p><strong>Schema changes need care:</strong> these tables are durable, so adding a column means
+ * a new Flyway migration ({@code src/main/resources/db/migration}) rather than a drop-and-rebuild.
+ * The DDL used to live in an {@code ensureSchema()} method here that ran on every boot.
  */
 @Service
 public class AnalyticsAggregateService implements ApplicationRunner {
@@ -89,6 +91,31 @@ public class AnalyticsAggregateService implements ApplicationRunner {
     private static final String ONE_SCOPE_FILTER = "service_scope = :serviceScope";
 
     /**
+     * The delay-band SQL, generated once from {@link DelayCategory} rather than written out by
+     * hand. {@code CATEGORY_COLUMNS}, {@code CATEGORY_COUNTS} and {@code CATEGORY_UPDATES} are
+     * three views of the same ordered list of bands, so the INSERT column list, its value
+     * expressions and the ON CONFLICT assignment can never fall out of step with each other or
+     * with the enum.
+     */
+    private static final String PEAK_DELAY_COLUMN = "peak_delay";
+
+    private static final String CATEGORY_COLUMNS = DelayCategory.delayedBands().stream()
+            .map(DelayCategory::aggregateColumn)
+            .collect(Collectors.joining(", "));
+
+    private static final String CATEGORY_COUNTS = DelayCategory.delayedBands().stream()
+            .map(band -> band.countSql(PEAK_DELAY_COLUMN))
+            .collect(Collectors.joining(",\n                       "));
+
+    private static final String CATEGORY_COUNTS_WITH_ALIAS = DelayCategory.delayedBands().stream()
+            .map(band -> "COALESCE(" + band.countSql(PEAK_DELAY_COLUMN) + ", 0) AS " + band.aggregateColumn())
+            .collect(Collectors.joining(",\n                       "));
+
+    private static final String CATEGORY_UPDATES = DelayCategory.delayedBands().stream()
+            .map(band -> band.aggregateColumn() + " = EXCLUDED." + band.aggregateColumn())
+            .collect(Collectors.joining(",\n                    "));
+
+    /**
      * Serialises every aggregate write. The startup backfill and the collector's per-date refresh
      * run on different threads and UPSERT the same tables; because each acquires row locks in its
      * own insertion order, running them concurrently deadlocked and killed the application during
@@ -106,19 +133,21 @@ public class AnalyticsAggregateService implements ApplicationRunner {
      */
     private final TransactionTemplate transactions;
 
-    @org.springframework.beans.factory.annotation.Value("${irishrail.analytics.aggregates.backfill-on-startup:true}")
-    private boolean backfillOnStartup;
+    private final IrishRailProperties properties;
 
     public AnalyticsAggregateService(NamedParameterJdbcTemplate jdbc,
-                                     PlatformTransactionManager transactionManager) {
+                                     PlatformTransactionManager transactionManager,
+                                     IrishRailProperties properties) {
         this.jdbc = jdbc;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.properties = properties;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        ensureSchema();
-        if (backfillOnStartup) {
+        // The schema is Flyway's (V2__analytics_aggregate_tables.sql). This used to call
+        // ensureSchema(), which issued the DDL on every boot from application code.
+        if (properties.analytics().aggregates().backfillOnStartup()) {
             refreshAll();
         }
     }
@@ -560,19 +589,18 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                       AND {scopeFilter}
                     GROUP BY trip_id
                 )
-                SELECT COALESCE(SUM(CASE WHEN peak_delay BETWEEN 5 AND 9 THEN 1 ELSE 0 END), 0) AS small_delay_trips,
-                       COALESCE(SUM(CASE WHEN peak_delay BETWEEN 10 AND 19 THEN 1 ELSE 0 END), 0) AS medium_delay_trips,
-                       COALESCE(SUM(CASE WHEN peak_delay BETWEEN 20 AND 39 THEN 1 ELSE 0 END), 0) AS big_delay_trips,
-                       COALESCE(SUM(CASE WHEN peak_delay >= 40 THEN 1 ELSE 0 END), 0) AS extreme_delay_trips
+                SELECT {categoryCounts}
                 FROM trip_peaks
-                """.replace("{scopeFilter}", scopeFilter(p, stationCode));
+                """
+                .replace("{scopeFilter}", scopeFilter(p, stationCode))
+                .replace("{categoryCounts}", CATEGORY_COUNTS_WITH_ALIAS);
 
         Map<String, Object> row = jdbc.queryForMap(sql, p);
         Map<String, Long> result = new LinkedHashMap<>();
-        result.put(DelayCategory.SMALL_DELAY.getDisplayLabel(), ((Number) row.get("small_delay_trips")).longValue());
-        result.put(DelayCategory.MEDIUM_DELAY.getDisplayLabel(), ((Number) row.get("medium_delay_trips")).longValue());
-        result.put(DelayCategory.BIG_DELAY.getDisplayLabel(), ((Number) row.get("big_delay_trips")).longValue());
-        result.put(DelayCategory.EXTREME_DELAY.getDisplayLabel(), ((Number) row.get("extreme_delay_trips")).longValue());
+        for (DelayCategory band : DelayCategory.delayedBands()) {
+            Number count = (Number) row.get(band.aggregateColumn());
+            result.put(band.getDisplayLabel(), count == null ? 0L : count.longValue());
+        }
         return result;
     }
 
@@ -604,82 +632,6 @@ public class AnalyticsAggregateService implements ApplicationRunner {
         return result;
     }
 
-    // ── schema ────────────────────────────────────────────────────────────────
-
-    private void ensureSchema() {
-        // Deliberately no DROP TABLE: these tables outlive the raw snapshots they came from.
-        jdbc.getJdbcTemplate().execute("""
-                CREATE TABLE IF NOT EXISTS daily_station_route_metrics (
-                    service_date date NOT NULL,
-                    service_scope varchar(32) NOT NULL,
-                    station_code varchar(32) NOT NULL,
-                    station_full_name varchar(255),
-                    origin varchar(255) NOT NULL,
-                    destination varchar(255) NOT NULL,
-                    total_snapshots bigint NOT NULL,
-                    unique_trips bigint NOT NULL,
-                    delayed_trips bigint NOT NULL,
-                    on_time_trips bigint NOT NULL,
-                    average_delay_minutes double precision NOT NULL,
-                    max_delay_minutes integer NOT NULL,
-                    total_delay_minutes bigint NOT NULL,
-                    small_delay_trips bigint NOT NULL,
-                    medium_delay_trips bigint NOT NULL,
-                    big_delay_trips bigint NOT NULL,
-                    extreme_delay_trips bigint NOT NULL,
-                    updated_at timestamp NOT NULL,
-                    PRIMARY KEY (service_date, service_scope, station_code, origin, destination)
-                )
-                """);
-        jdbc.getJdbcTemplate().execute("""
-                CREATE TABLE IF NOT EXISTS daily_trip_metrics (
-                    service_date date NOT NULL,
-                    service_scope varchar(32) NOT NULL,
-                    trip_id bigint NOT NULL,
-                    train_code varchar(32),
-                    train_date varchar(32),
-                    direction varchar(64),
-                    origin varchar(255) NOT NULL,
-                    destination varchar(255) NOT NULL,
-                    peak_delay integer NOT NULL,
-                    snapshot_count bigint NOT NULL,
-                    first_captured_at timestamp,
-                    peak_station_code varchar(32),
-                    peak_station_name varchar(255),
-                    peak_sch_depart varchar(16),
-                    peak_sch_arrival varchar(16),
-                    peak_captured_at timestamp,
-                    updated_at timestamp NOT NULL,
-                    PRIMARY KEY (service_date, service_scope, trip_id)
-                )
-                """);
-        jdbc.getJdbcTemplate().execute("""
-                CREATE TABLE IF NOT EXISTS daily_hourly_metrics (
-                    service_date date NOT NULL,
-                    service_scope varchar(32) NOT NULL,
-                    hour_of_day smallint NOT NULL,
-                    snapshot_count bigint NOT NULL,
-                    delayed_snapshots bigint NOT NULL,
-                    total_delay_minutes bigint NOT NULL,
-                    updated_at timestamp NOT NULL,
-                    PRIMARY KEY (service_date, service_scope, hour_of_day)
-                )
-                """);
-
-        for (String indexSql : List.of(
-                "CREATE INDEX IF NOT EXISTS idx_dsrm_scope_date_station ON daily_station_route_metrics (service_scope, service_date, station_code)",
-                "CREATE INDEX IF NOT EXISTS idx_dsrm_date_scope ON daily_station_route_metrics (service_date, service_scope)",
-                "CREATE INDEX IF NOT EXISTS idx_dtm_date_scope ON daily_trip_metrics (service_date, service_scope)",
-                "CREATE INDEX IF NOT EXISTS idx_dtm_scope_peak ON daily_trip_metrics (service_scope, peak_delay DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_dtm_trip ON daily_trip_metrics (trip_id)",
-                "CREATE INDEX IF NOT EXISTS idx_dhm_date_scope ON daily_hourly_metrics (service_date, service_scope)")) {
-            jdbc.getJdbcTemplate().execute(indexSql);
-        }
-
-        // routes() reads daily_trip_metrics now, so this index is pure write overhead.
-        jdbc.getJdbcTemplate().execute("DROP INDEX IF EXISTS idx_dsrm_scope_route_date");
-    }
-
     // ── aggregate builders ────────────────────────────────────────────────────
 
     private int insertStationRouteAggregates(Window w) {
@@ -688,7 +640,7 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                     service_date, service_scope, station_code, station_full_name, origin, destination,
                     total_snapshots, unique_trips, delayed_trips, on_time_trips,
                     average_delay_minutes, max_delay_minutes, total_delay_minutes,
-                    small_delay_trips, medium_delay_trips, big_delay_trips, extreme_delay_trips,
+                    {categoryColumns},
                     updated_at
                 )
                 WITH trip_peaks AS (
@@ -720,10 +672,7 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                        COALESCE(AVG(CASE WHEN peak_delay >= :minDelay THEN peak_delay END), 0),
                        COALESCE(MAX(peak_delay), 0),
                        SUM(CASE WHEN peak_delay >= :minDelay THEN peak_delay ELSE 0 END),
-                       SUM(CASE WHEN peak_delay BETWEEN 5 AND 9 THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN peak_delay BETWEEN 10 AND 19 THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN peak_delay BETWEEN 20 AND 39 THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN peak_delay >= 40 THEN 1 ELSE 0 END),
+                       {categoryCounts},
                        NOW()
                 FROM trip_peaks
                 GROUP BY service_date, service_scope, station_code, origin, destination
@@ -737,14 +686,14 @@ public class AnalyticsAggregateService implements ApplicationRunner {
                     average_delay_minutes = EXCLUDED.average_delay_minutes,
                     max_delay_minutes = EXCLUDED.max_delay_minutes,
                     total_delay_minutes = EXCLUDED.total_delay_minutes,
-                    small_delay_trips = EXCLUDED.small_delay_trips,
-                    medium_delay_trips = EXCLUDED.medium_delay_trips,
-                    big_delay_trips = EXCLUDED.big_delay_trips,
-                    extreme_delay_trips = EXCLUDED.extreme_delay_trips,
+                    {categoryUpdates},
                     updated_at = EXCLUDED.updated_at
                 """
                 .replace("{scope}", SCOPE_EXPR)
-                .replace("{dateFilter}", w.dateFilter() + w.stationRouteFilter());
+                .replace("{dateFilter}", w.dateFilter() + w.stationRouteFilter())
+                .replace("{categoryColumns}", CATEGORY_COLUMNS)
+                .replace("{categoryCounts}", CATEGORY_COUNTS)
+                .replace("{categoryUpdates}", CATEGORY_UPDATES);
 
         return jdbc.update(sql, aggregateParams(w));
     }

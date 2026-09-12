@@ -1,17 +1,21 @@
 package com.irishrail.service;
 
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.irishrail.config.IrishRailProperties;
 import com.irishrail.model.Station;
 import com.irishrail.model.TrainMovement;
 import com.irishrail.model.TrainMovementList;
 import com.irishrail.model.TrainRoute;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -19,8 +23,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Builds the stop-by-stop path of a single train from {@code getTrainMovementsXML}.
@@ -42,21 +44,31 @@ public class TrainRouteService {
     private static final DateTimeFormatter API_DATE = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH);
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
-    private final RestTemplate restTemplate;
+    private final RestClient restClient;
     private final StationDirectory stationDirectory;
-    private final XmlMapper xmlMapper = new XmlMapper();
+    private final XmlMapper xmlMapper;
+    private final IrishRailProperties properties;
 
-    @Value("${irishrail.api.train-movements-url:https://api.irishrail.ie/realtime/realtime.asmx/getTrainMovementsXML}")
-    private String trainMovementsUrl;
+    /**
+     * Was a {@code ConcurrentHashMap} emptied wholesale once it passed 400 entries, which threw
+     * away every warm route to make room for one. Caffeine evicts the least useful entry instead,
+     * and the entries live past their freshness window so {@link #getRoute} can still serve a
+     * slightly old route when the upstream call fails.
+     */
+    private final Cache<String, Cached> cache;
 
-    @Value("${irishrail.api.route-cache-ms:30000}")
-    private long routeCacheMs;
-
-    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
-
-    public TrainRouteService(RestTemplate irishRailRestTemplate, StationDirectory stationDirectory) {
-        this.restTemplate = irishRailRestTemplate;
+    public TrainRouteService(RestClient irishRailRestClient,
+                             StationDirectory stationDirectory,
+                             XmlMapper irishRailXmlMapper,
+                             IrishRailProperties properties) {
+        this.restClient = irishRailRestClient;
         this.stationDirectory = stationDirectory;
+        this.xmlMapper = irishRailXmlMapper;
+        this.properties = properties;
+        this.cache = Caffeine.newBuilder()
+                .maximumSize(properties.api().maxCachedRoutes())
+                .expireAfterWrite(Duration.ofMillis(properties.api().routeCacheMs() * 4))
+                .build();
     }
 
     private record Cached(TrainRoute route, long loadedAtMs) {}
@@ -70,15 +82,13 @@ public class TrainRouteService {
                 : trainDate.trim();
 
         String key = code + "|" + date;
-        Cached cached = cache.get(key);
-        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= routeCacheMs) {
+        Cached cached = cache.getIfPresent(key);
+        if (cached != null && System.currentTimeMillis() - cached.loadedAtMs() <= properties.api().routeCacheMs()) {
             return cached.route();
         }
 
         TrainRoute route = fetchRoute(code, date);
         if (route != null) {
-            // Bounded: a busy day sees a few hundred distinct trains at most.
-            if (cache.size() > 400) cache.clear();
             cache.put(key, new Cached(route, System.currentTimeMillis()));
             return route;
         }
@@ -87,13 +97,15 @@ public class TrainRouteService {
 
     private TrainRoute fetchRoute(String trainCode, String trainDate) {
         try {
-            String url = UriComponentsBuilder.fromHttpUrl(trainMovementsUrl)
+            String url = UriComponentsBuilder.fromUriString(properties.api().trainMovementsUrl())
                     .queryParam("TrainId", trainCode)
                     .queryParam("TrainDate", trainDate)
                     .build()
                     .toUriString();
 
-            String xml = restTemplate.getForObject(url, String.class);
+            // Already encoded by the builder, so pass a URI: a String would be re-read as a
+            // URI template and any brace in a train code treated as a placeholder.
+            String xml = restClient.get().uri(URI.create(url)).retrieve().body(String.class);
             if (xml == null || xml.isBlank()) return null;
 
             TrainMovementList list = xmlMapper.readValue(xml, TrainMovementList.class);
@@ -103,7 +115,7 @@ public class TrainRouteService {
             }
             return buildRoute(trainCode, trainDate, movements);
         } catch (Exception e) {
-            log.error("Falha ao buscar rota do trem {} em {}: {}", trainCode, trainDate, e.getMessage());
+            log.error("Failed to fetch route for train {} on {}: {}", trainCode, trainDate, e.getMessage());
             return null;
         }
     }
@@ -121,7 +133,7 @@ public class TrainRouteService {
         for (TrainMovement movement : ordered) {
             Station station = stationDirectory.findByCodeWithCoordinates(movement.getLocationCode()).orElse(null);
             if (station == null) {
-                log.debug("Rota {}: sem coordenada para {}", trainCode, movement.getLocationCode());
+                log.debug("Route {}: no coordinates for {}", trainCode, movement.getLocationCode());
                 continue;
             }
 

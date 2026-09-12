@@ -1,5 +1,6 @@
 package com.irishrail.service;
 
+import com.irishrail.config.IrishRailProperties;
 import com.irishrail.model.Station;
 import com.irishrail.model.TrainInfo;
 import com.irishrail.model.ServiceScope;
@@ -7,8 +8,8 @@ import com.irishrail.repository.TripRepository;
 import com.irishrail.repository.TripStationSnapshotRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.TaskScheduler;
@@ -47,21 +48,14 @@ public class TrainDelayScheduler {
     private final TaskScheduler                 taskScheduler;
     private final TransactionTemplate           transactions;
 
-    @Value("${irishrail.retention.days:30}")
-    private int retentionDays;
-
     /**
      * Aggregates cost ~75× less per day of history than raw snapshots (~440 kB against ~33 MB), so
-     * they are kept far longer — or forever, which is what a value of 0 or less means.
+     * they are kept far longer — or forever, which is what {@code retention.aggregate-days} of 0
+     * or less means.
      */
-    @Value("${irishrail.retention.aggregate-days:0}")
-    private int aggregateRetentionDays;
+    private final IrishRailProperties properties;
 
-    @Value("${irishrail.collector.cycle-budget-seconds:120}")
-    private long cycleBudgetSeconds;
-
-    @Value("${irishrail.retention.startup-delay-ms:45000}")
-    private long retentionStartupDelayMs;
+    private final MeterRegistry meters;
 
     /** One departure as the change detector sees it → the last lateMinutes we stored for it. */
     private record SeenKey(String scope, String trainCode, String stationCode, String trainDate, String schDepart) {}
@@ -76,7 +70,9 @@ public class TrainDelayScheduler {
                                AnalyticsAggregateService analyticsAggregateService,
                                @Qualifier("stationFetchExecutor") ThreadPoolTaskExecutor stationFetchExecutor,
                                TaskScheduler taskScheduler,
-                               PlatformTransactionManager transactionManager) {
+                               PlatformTransactionManager transactionManager,
+                               IrishRailProperties properties,
+                               MeterRegistry meters) {
         this.irishRailService     = irishRailService;
         this.delayTrackingService = delayTrackingService;
         this.snapshotRepository   = snapshotRepository;
@@ -86,6 +82,9 @@ public class TrainDelayScheduler {
         this.stationFetchExecutor = stationFetchExecutor;
         this.taskScheduler        = taskScheduler;
         this.transactions         = new TransactionTemplate(transactionManager);
+        this.properties           = properties;
+        this.meters               = meters;
+        meters.gauge("irishrail.collector.state.entries", lastSeen, Map::size);
     }
 
     private record FetchJob(Station station, String scope, boolean heustonOnly) {}
@@ -143,6 +142,8 @@ public class TrainDelayScheduler {
         }
 
         long doneNanos = System.nanoTime();
+        meters.timer("irishrail.collector.cycle").record(doneNanos - startedAtNanos, TimeUnit.NANOSECONDS);
+        meters.counter("irishrail.collector.snapshots.saved").increment(totalSaved);
         if (totalSaved > 0) {
             log.info("Collect: {} snapshots saved across {} station checks in {} ms (fetch {} ms, persist {} ms; {} Connolly, {} Heuston)",
                     totalSaved, jobs.size(),
@@ -164,11 +165,11 @@ public class TrainDelayScheduler {
 
         try {
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
-                    .get(cycleBudgetSeconds, TimeUnit.SECONDS);
+                    .get(properties.collector().cycleBudgetSeconds(), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             long pending = futures.stream().filter(f -> !f.isDone()).count();
             log.warn("Collect: cycle budget of {}s exceeded, proceeding without {} pending station(s)",
-                    cycleBudgetSeconds, pending);
+                    properties.collector().cycleBudgetSeconds(), pending);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return List.of();
@@ -207,7 +208,7 @@ public class TrainDelayScheduler {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void scheduleStartupCleanup() {
-        taskScheduler.schedule(this::cleanup, Instant.now().plusMillis(retentionStartupDelayMs));
+        taskScheduler.schedule(this::cleanup, Instant.now().plusMillis(properties.retention().startupDelayMs()));
     }
 
     /**
@@ -230,14 +231,14 @@ public class TrainDelayScheduler {
     }
 
     private void cleanupInTransaction() {
-        LocalDate rawCutoff = LocalDate.now().minusDays(retentionDays);
+        LocalDate rawCutoff = LocalDate.now().minusDays(properties.retention().days());
         int snapshots = snapshotRepository.deleteByCapturedAtBefore(rawCutoff.atStartOfDay());
         int trips     = tripRepository.deleteOrphans();
 
         int aggregates = 0;
         String aggregateNote = "aggregates kept indefinitely";
-        if (aggregateRetentionDays > 0) {
-            LocalDate aggregateCutoff = LocalDate.now().minusDays(aggregateRetentionDays);
+        if (properties.retention().aggregateDays() > 0) {
+            LocalDate aggregateCutoff = LocalDate.now().minusDays(properties.retention().aggregateDays());
             aggregates = analyticsAggregateService.deleteBefore(aggregateCutoff);
             aggregateNote = "aggregates older than " + aggregateCutoff;
         }
