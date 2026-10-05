@@ -1,0 +1,136 @@
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <th:block th:replace="~{fragments/layout :: analytics}"></th:block>
+    <th:block th:replace="~{fragments/layout :: base-assets}"></th:block>
+    <title>IERailMetrics — Journey Planner</title>
+    <style>
+        .planner-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+        .planner-grid { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap:.8rem; align-items:end; }
+        .field-label { color:var(--text-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.35rem; }
+        .station-select, .action-btn { height:42px; border-radius:8px; font-size:.9rem; }
+        .station-select { width:100%; background:#101a25; border:1px solid var(--border); color:var(--text-primary); padding:0 .8rem; outline:none; }
+        .station-select:focus, .station-select:hover { border-color:var(--ir-green); }
+        .station-select option { background:#111820; }
+        /* Searchable station picker: a text input over a hidden code, with a filtered list below. */
+        .station-combo { position:relative; }
+        .station-combo .station-select { padding-right:2.2rem; }
+        .station-combo .combo-caret { position:absolute; right:.8rem; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none; font-size:.8rem; }
+        .station-options { position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:30; max-height:280px; overflow-y:auto; margin:0; padding:.3rem; list-style:none; background:#101a25; border:1px solid var(--border); border-radius:8px; box-shadow:0 12px 32px rgba(0,0,0,.45); }
+        .station-options[hidden] { display:none; }
+        .station-options li { padding:.45rem .7rem; border-radius:6px; cursor:pointer; font-size:.9rem; color:var(--text-primary); }
+        .station-options li mark { background:none; color:var(--ir-green); font-weight:700; padding:0; }
+        .station-options li.active, .station-options li:hover { background:rgba(62,207,115,.14); }
+        .station-options li.no-match { color:var(--text-muted); cursor:default; }
+        .action-btn { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; background:var(--ir-green); color:#06100a; border:1px solid var(--ir-green); font-weight:800; padding:0 1rem; min-width:120px; }
+        .action-btn:disabled { opacity:.65; cursor:wait; }
+
+        .summary-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; color:var(--text-muted); font-size:.85rem; margin-bottom:.75rem; }
+        .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+        .table-scroll { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; min-width:920px; }
+        thead th { background:#0d1822; color:var(--text-muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; padding:.75rem 1rem; white-space:nowrap; border-bottom:1px solid var(--border); }
+        tbody tr { border-bottom:1px solid var(--border); }
+        tbody tr:nth-child(even) { background:var(--bg-row-alt); }
+        tbody tr:nth-child(odd) { background:var(--bg-row); }
+        tbody tr:hover { background:#192436; }
+        td { padding:.78rem 1rem; font-size:.88rem; vertical-align:middle; }
+        .train-chip { display:inline-block; background:rgba(0,154,68,.12); border:1px solid rgba(0,154,68,.3); color:#3ecf73; border-radius:5px; padding:2px 8px; font-size:.8rem; font-weight:700; font-family:monospace; }
+        .muted { color:var(--text-muted); }
+        .due-now { color:#3ecf73; font-weight:800; }
+        .due-soon { color:#fbbf24; font-weight:800; }
+        .badge-status { background:rgba(59,130,246,.18); color:#60a5fa; border:1px solid rgba(59,130,246,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
+        .delay-late { background:rgba(224,52,52,.18); color:#f87171; border:1px solid rgba(224,52,52,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
+        .delay-ok { background:rgba(59,130,246,.18); color:#60a5fa; border:1px solid rgba(59,130,246,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
+        .empty-state { padding:3rem 1rem; text-align:center; color:var(--text-muted); }
+        @media (max-width: 760px) {
+            .site-header .d-flex { flex-wrap:wrap; }
+            .planner-grid { grid-template-columns:1fr; }
+            .action-btn { width:100%; }
+            .scope-tab { flex:1 1 auto; justify-content:center; padding:.5rem .65rem; }
+        }
+    </style>
+</head>
+<body>
+<th:block th:replace="~{fragments/layout :: site-header('Journey Planner', 'Irish Rail live station-to-station options', false, 'LIVE', null, 'changeView')}"></th:block>
+
+<main class="container-fluid px-4 py-4">
+    <nav class="scope-tabs" aria-label="Main navigation">
+        <a href="/overview" class="scope-tab"><i class="bi bi-diagram-3"></i><span>Overview</span></a>
+        <a href="/journey" class="scope-tab active"><i class="bi bi-signpost-split"></i><span>Journey</span></a>
+        <a href="/map" class="scope-tab"><i class="bi bi-geo-alt"></i><span>Map</span></a>
+    </nav>
+
+    <section class="planner-panel">
+        <div class="planner-grid">
+            <div>
+                <label class="field-label" for="from-station-input">From station</label>
+                <div class="station-combo" id="from-combo">
+                    <input class="station-select" id="from-station-input" type="text" placeholder="Type a station name…"
+                           autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list"
+                           aria-expanded="false" aria-controls="from-station-list">
+                    <i class="bi bi-chevron-down combo-caret" aria-hidden="true"></i>
+                    <input type="hidden" id="from-station">
+                    <ul class="station-options" id="from-station-list" role="listbox" hidden></ul>
+                </div>
+            </div>
+            <div>
+                <label class="field-label" for="to-station-input">To station</label>
+                <div class="station-combo" id="to-combo">
+                    <input class="station-select" id="to-station-input" type="text" placeholder="Type a station name…"
+                           autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list"
+                           aria-expanded="false" aria-controls="to-station-list">
+                    <i class="bi bi-chevron-down combo-caret" aria-hidden="true"></i>
+                    <input type="hidden" id="to-station">
+                    <ul class="station-options" id="to-station-list" role="listbox" hidden></ul>
+                </div>
+            </div>
+            <button class="action-btn" id="search-btn" type="button" onclick="fetchJourneyOptions()">
+                <i class="bi bi-search"></i><span>Find trains</span>
+            </button>
+        </div>
+    </section>
+
+    <div class="summary-row">
+        <div id="route-summary">Select two stations to find matching live services.</div>
+        <div id="result-count">0 trains</div>
+    </div>
+
+    <section class="board-wrap">
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Train</th>
+                        <th>Type</th>
+                        <th>Final destination</th>
+                        <th>Direction</th>
+                        <th>Depart from origin</th>
+                        <th>Arrive at destination</th>
+                        <th>Due in</th>
+                        <th>Status</th>
+                        <th>Delay</th>
+                        <th>Last seen</th>
+                    </tr>
+                </thead>
+                <tbody id="journey-tbody">
+                    <tr>
+                        <td colspan="10">
+                            <div class="empty-state">
+                                <i class="bi bi-signpost-split fs-1 d-block mb-2"></i>
+                                Choose a route and search for trains.
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script th:inline="javascript">
+// One {code, name} per station, in display order. Fed to the searchable pickers.
+const STATIONS = /*[[${stations.![{code: stationCode, name: stationDesc}]}]]*/ [];
+</script>
+<script th:src="@{/js/journey.js}"></script>
+</body>
+</html>

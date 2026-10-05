@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.5</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
 
@@ -19,7 +19,15 @@
 
     <properties>
         <java.version>21</java.version>
-        <maven.test.skip>true</maven.test.skip>
+        <!--
+          Empty by default, which makes the *IT tests use a Testcontainers PostgreSQL. Override to
+          point them at an existing server instead, on a machine with no Docker:
+            mvn verify -Dirishrail.test.datasource.url=jdbc:postgresql://localhost:5432/irishrail_test
+          The named database is written to and truncated; it must not be one you care about.
+        -->
+        <irishrail.test.datasource.url/>
+        <irishrail.test.datasource.username>postgres</irishrail.test.datasource.username>
+        <irishrail.test.datasource.password>postgres</irishrail.test.datasource.password>
     </properties>
 
     <dependencies>
@@ -38,6 +46,43 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
+        <!-- Bean Validation on the @ConfigurationProperties records: a typo in a timeout or a
+             negative pool size fails the boot instead of surfacing as odd behaviour hours later. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Bounded, self-evicting caches. Replaces five hand-rolled ConcurrentHashMap+timestamp
+             caches, two of which were keyed on unvalidated request parameters and never evicted. -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- Health, readiness and metrics. The value of this app is a collector running 24/7;
+             without these its only signal was log.info. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Schema ownership. Previously split across ddl-auto=update, hand-written DDL in
+             AnalyticsAggregateService and index DDL in DatabaseIndexInitializer. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -49,9 +94,28 @@
             <artifactId>jackson-dataformat-xml</artifactId>
         </dependency>
 
+        <!-- Pooled HTTP client for the Irish Rail API; version managed by the Boot parent. -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
+        <!-- The analytics SQL is Postgres-specific (DISTINCT ON, BRIN, advisory locks, partial
+             indexes), so it can only be tested against a real Postgres. H2 was on the classpath
+             but unused, and would have silently accepted none of the above. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -67,6 +131,31 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+              Tests that need a database are named *IT and run under failsafe, so `mvn test` stays
+              a fast, dependency-free suite and `mvn verify` is the full one. They skip themselves
+              when neither Docker nor -Dirishrail.test.datasource.url is available.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <irishrail.test.datasource.url>${irishrail.test.datasource.url}</irishrail.test.datasource.url>
+                        <irishrail.test.datasource.username>${irishrail.test.datasource.username}</irishrail.test.datasource.username>
+                        <irishrail.test.datasource.password>${irishrail.test.datasource.password}</irishrail.test.datasource.password>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

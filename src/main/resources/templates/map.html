@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <th:block th:replace="~{fragments/layout :: analytics}"></th:block>
+    <th:block th:replace="~{fragments/layout :: base-assets}"></th:block>
+    <th:block th:replace="~{fragments/layout :: leaflet-css}"></th:block>
+    <title>IERailMetrics — Train Map</title>
+    <style>
+        .map-shell {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 380px;
+            gap: 1rem;
+            min-height: calc(100vh - 170px);
+        }
+        .map-wrap {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, .5);
+            min-height: 640px;
+            position: relative;
+        }
+        /* Close to the final dimmed-tile tone, so there is no dark flash before tiles land. */
+        #train-map { height: 100%; min-height: 640px; background: #7c848c; }
+
+        /* Positron is deliberately near-white; --tile-filter (from irishrail.map.tile-filter)
+           settles it into the dark shell without touching the data drawn on top of it. */
+        .leaflet-tile-pane { filter: var(--tile-filter, none); }
+
+        .map-badge {
+            position: absolute;
+            z-index: 500;
+            background: rgba(13, 21, 32, .94);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            padding: 7px 11px;
+            font-size: .82rem;
+            align-items: center;
+            gap: .45rem;
+        }
+        #map-loading { top: 14px; left: 14px; display: none; }
+        #map-loading.visible { display: inline-flex; }
+        #map-error { top: 14px; left: 14px; display: none; border-color: rgba(245,158,11,.5); color: var(--amber); }
+        #map-error.visible { display: inline-flex; }
+
+        .map-legend {
+            position: absolute;
+            bottom: 14px; left: 14px;
+            z-index: 500;
+            background: rgba(13, 21, 32, .94);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: .6rem .75rem;
+            font-size: .72rem;
+            color: var(--text-muted);
+            max-width: 220px;
+        }
+        .map-legend-title { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--text-primary); margin-bottom: .4rem; font-size: .66rem; }
+        .legend-row { display: flex; align-items: center; gap: .4rem; margin-top: .2rem; }
+        .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+        /* ── side panel ─────────────────────────────────────────────────── */
+        .map-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, .5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 640px;
+        }
+        .panel-head { padding: .9rem 1rem .8rem; border-bottom: 1px solid var(--border); }
+        .panel-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ir-green); font-weight: 750; }
+        .capture-meta { color: var(--text-muted); font-size: .76rem; margin-top: .25rem; }
+
+        .map-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
+        .map-stat { background: #0d1822; border: 1px solid var(--border); border-radius: 8px; padding: .6rem; text-align: center; }
+        .map-stat-value { font-size: 1.4rem; font-weight: 800; line-height: 1; }
+        .map-stat-label { color: var(--text-muted); font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; margin-top: .3rem; }
+
+        .panel-controls { padding: .7rem 1rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .55rem; }
+        .search-box {
+            background: #0d1822; border: 1px solid var(--border); color: var(--text-primary);
+            border-radius: 8px; padding: 6px 12px; font-size: .82rem; outline: none; width: 100%;
+            transition: border-color .15s;
+        }
+        .search-box:focus { border-color: var(--ir-green); }
+        .search-box::placeholder { color: var(--text-muted); }
+        .chip-row { display: flex; gap: .35rem; flex-wrap: wrap; }
+        .chip {
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 20px; padding: 3px 11px; font-size: .74rem; cursor: pointer;
+            transition: all .15s; white-space: nowrap;
+        }
+        .chip:hover { border-color: var(--ir-green); color: var(--text-primary); }
+        .chip.active { background: rgba(0, 154, 68, .16); border-color: var(--ir-green); color: #3ecf73; }
+
+        .train-list { overflow: auto; padding: .2rem 0; flex: 1; }
+        .train-row {
+            width: 100%;
+            background: transparent;
+            border: 0;
+            border-left: 3px solid transparent;
+            border-bottom: 1px solid rgba(31, 51, 72, .65);
+            color: var(--text-primary);
+            padding: .6rem 1rem;
+            text-align: left;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: .2rem .8rem;
+            transition: background .12s, border-color .12s;
+        }
+        .train-row:hover { background: var(--bg-row); }
+        .train-row.selected { background: var(--bg-row); border-left-color: var(--ir-green); }
+        .train-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .84rem; font-weight: 800; color: #3ecf73; }
+        .train-delay { font-size: .76rem; font-weight: 700; white-space: nowrap; }
+        .train-leg { color: var(--text-muted); font-size: .76rem; grid-column: 1 / -1; line-height: 1.35; }
+        .train-next { color: #8fb0d4; font-size: .72rem; grid-column: 1 / -1; }
+        .status-tag { font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; color: var(--text-muted); margin-left: .35rem; }
+
+        .empty-state { color: var(--text-muted); text-align: center; padding: 3rem 1.5rem; font-size: .85rem; }
+
+        /* ── detail drawer (route + history) ────────────────────────────── */
+        .history-panel { border-top: 1px solid var(--border); background: #0b1420; max-height: 52%; overflow: auto; display: none; }
+        .history-panel.visible { display: block; }
+        .history-head { padding: .7rem 1rem .5rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; position: sticky; top: 0; background: #0b1420; z-index: 2; }
+        .history-title { font-size: .74rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ir-green); font-weight: 750; }
+        .drawer-tabs { display: flex; gap: .3rem; padding: 0 1rem .5rem; position: sticky; top: 2.1rem; background: #0b1420; z-index: 2; }
+        .drawer-tab {
+            background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+            border-radius: 6px; padding: 2px 10px; font-size: .72rem; cursor: pointer; transition: all .15s;
+        }
+        .drawer-tab:hover { color: var(--text-primary); border-color: var(--ir-green); }
+        .drawer-tab.active { background: rgba(0,154,68,.16); border-color: var(--ir-green); color: #3ecf73; }
+
+        /* ── route list ─────────────────────────────────────────────────── */
+        .route-row {
+            display: grid;
+            grid-template-columns: 14px 1fr auto;
+            gap: .1rem .6rem;
+            align-items: center;
+            padding: .35rem 1rem;
+            font-size: .78rem;
+        }
+        .route-row + .route-row { border-top: 1px solid rgba(31, 51, 72, .4); }
+        .route-row.is-next { background: rgba(0, 154, 68, .1); }
+        .route-dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            border: 1.5px solid var(--text-muted);
+            background: transparent;
+            justify-self: center;
+        }
+        .route-row.is-reached .route-dot { background: #3ecf73; border-color: #3ecf73; }
+        .route-row.is-next .route-dot { border-color: var(--ir-green); box-shadow: 0 0 0 3px rgba(0,184,79,.2); }
+        .route-name { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .route-row.is-pending .route-name { color: var(--text-muted); }
+        .route-time { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-muted); font-size: .74rem; }
+        .route-late { font-weight: 700; }
+        .route-kind { font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-left: .3rem; }
+        .history-close { background: none; border: 0; color: var(--text-muted); font-size: 1rem; line-height: 1; cursor: pointer; }
+        .history-close:hover { color: var(--text-primary); }
+        .history-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem; padding: 0 1rem .6rem; }
+        .history-stat { background: #0d1822; border: 1px solid var(--border); border-radius: 6px; padding: .45rem; text-align: center; }
+        .history-stat-value { font-size: .95rem; font-weight: 800; line-height: 1; }
+        .history-stat-label { color: var(--text-muted); font-size: .58rem; text-transform: uppercase; letter-spacing: .05em; margin-top: .25rem; }
+        .history-row { display: grid; grid-template-columns: 1fr auto; gap: .1rem .6rem; padding: .4rem 1rem; border-top: 1px solid rgba(31, 51, 72, .5); font-size: .76rem; }
+        .history-station { color: var(--text-primary); }
+        .history-when { color: var(--text-muted); font-size: .7rem; grid-column: 1 / -1; }
+        .history-late { font-weight: 700; white-space: nowrap; }
+
+        /* ── markers ────────────────────────────────────────────────────── */
+        /* A solid disc in the delay colour with a dark ink arrow inside. The previous
+           translucent-fill-plus-hairline-border style relied on a near-black basemap for contrast
+           and all but vanished on a light one; this reads on either. */
+        .train-dot {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            background: var(--marker-color);
+            border: 1.5px solid rgba(6, 12, 20, .55);
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+            transition: box-shadow .2s, background .2s;
+        }
+        .train-dot.selected {
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker-color) 55%, transparent),
+                        0 1px 4px rgba(0, 0, 0, .35);
+        }
+        .train-dot.not-running { opacity: .6; border-style: dashed; }
+        .train-arrow {
+            width: 0; height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 11px solid #0a121b;
+            transform-origin: 50% 62%;
+            transition: transform .5s ease-out;
+        }
+        .train-pin { width: 7px; height: 7px; border-radius: 50%; background: #0a121b; }
+
+        /* Leaflet tooltips default to a white box; the inherited near-white text made station
+           names invisible in them. */
+        .leaflet-tooltip.station-dot-label {
+            background: #0d1520;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+            font-size: .75rem;
+        }
+        .leaflet-tooltip.station-dot-label::before { border-top-color: #0d1520; }
+
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: #0d1520;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+        }
+        .leaflet-popup-content { margin: 12px 14px; min-width: 190px; }
+        .leaflet-container a.leaflet-popup-close-button { color: var(--text-muted); }
+        .popup-code { color: #3ecf73; font-weight: 800; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+        .popup-delay { font-weight: 700; font-size: .82rem; margin-top: .15rem; }
+        .popup-line { color: var(--text-muted); font-size: .76rem; margin-top: .2rem; }
+        .popup-line strong { color: var(--text-primary); font-weight: 600; }
+        .popup-action {
+            margin-top: .5rem; width: 100%;
+            background: rgba(0, 154, 68, .16); border: 1px solid rgba(0, 184, 79, .5);
+            color: #3ecf73; border-radius: 6px; padding: 4px 8px; font-size: .74rem;
+            font-weight: 700; cursor: pointer;
+        }
+        .popup-action:hover { background: rgba(0, 184, 79, .26); }
+        .leaflet-control-attribution { background: rgba(13, 21, 32, .82) !important; color: var(--text-muted) !important; }
+        .leaflet-control-attribution a { color: #6fa8dc !important; }
+
+        @media (max-width: 991px) {
+            .map-shell { grid-template-columns: 1fr; }
+            .map-wrap, #train-map { min-height: 520px; }
+            .map-panel { min-height: 420px; }
+        }
+        @media (max-width: 575px) {
+            .map-wrap, #train-map { min-height: 440px; }
+            .map-stats { grid-template-columns: repeat(3, 1fr); gap: .35rem; padding: .6rem .7rem; }
+            .map-legend { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<th:block th:replace="~{fragments/layout :: site-header('Train Map', 'Irish Rail live positions', true, 'LIVE MAP', null, 'changeView')}"></th:block>
+
+<main class="container-fluid px-4 py-4">
+    <nav class="scope-tabs" aria-label="Main navigation">
+        <a href="/overview" class="scope-tab"><i class="bi bi-diagram-3"></i><span>Overview</span></a>
+        <a href="/journey" class="scope-tab"><i class="bi bi-signpost-split"></i><span>Journey</span></a>
+        <a href="/map" class="scope-tab active"><i class="bi bi-geo-alt"></i><span>Map</span></a>
+    </nav>
+
+    <section class="map-shell">
+        <div class="map-wrap">
+            <div id="map-loading" class="map-badge">
+                <i class="bi bi-arrow-clockwise spin"></i><span>Refreshing positions</span>
+            </div>
+            <div id="map-error" class="map-badge">
+                <i class="bi bi-exclamation-triangle"></i><span id="map-error-text">Showing last known positions</span>
+            </div>
+            <div id="train-map" aria-label="Ireland live train position map"
+                 th:style="'--tile-filter:' + ${mapTileFilter}"></div>
+            <div class="map-legend" aria-hidden="true">
+                <div class="map-legend-title">Delay</div>
+                <div id="legend-rows"></div>
+                <div class="legend-row" style="margin-top:.45rem">
+                    <span class="legend-swatch" style="border:1px dashed var(--text-muted);background:transparent"></span>
+                    <span>Not yet running</span>
+                </div>
+            </div>
+        </div>
+
+        <aside class="map-panel">
+            <div class="panel-head">
+                <div class="panel-title"><i class="bi bi-broadcast-pin me-1"></i>Live capture</div>
+                <div id="capture-meta" class="capture-meta">Waiting for Irish Rail API response</div>
+            </div>
+
+            <div class="map-stats">
+                <div class="map-stat">
+                    <div id="stat-shown" class="map-stat-value">0</div>
+                    <div class="map-stat-label">Shown</div>
+                </div>
+                <div class="map-stat">
+                    <div id="stat-running" class="map-stat-value" style="color:#3ecf73">0</div>
+                    <div class="map-stat-label">Running</div>
+                </div>
+                <div class="map-stat">
+                    <div id="stat-delayed" class="map-stat-value" style="color:#f87171">0</div>
+                    <div class="map-stat-label">Delayed</div>
+                </div>
+            </div>
+
+            <div class="panel-controls">
+                <input type="search" id="train-search" class="search-box" autocomplete="off"
+                       placeholder="Filter by train code, origin or destination">
+                <div class="chip-row" id="status-chips" role="group" aria-label="Status filter">
+                    <button class="chip active" type="button" data-status="running">Running</button>
+                    <button class="chip" type="button" data-status="all">All trains</button>
+                    <button class="chip" type="button" id="chip-delayed" data-toggle="delayed">Delayed only</button>
+                    <button class="chip" type="button" id="chip-stations" data-toggle="stations">Stations</button>
+                    <button class="chip" type="button" id="chip-rails" data-toggle="rails">Trilhos</button>
+                </div>
+            </div>
+
+            <div id="train-list" class="train-list">
+                <div class="empty-state">
+                    <i class="bi bi-geo-alt fs-1 d-block mb-2"></i>
+                    Loading current train positions…
+                </div>
+            </div>
+
+            <div id="history-panel" class="history-panel">
+                <div class="history-head">
+                    <span class="history-title"><span id="history-title-code">Detalhes</span></span>
+                    <button class="history-close" type="button" id="history-close" aria-label="Fechar">&times;</button>
+                </div>
+                <div class="drawer-tabs" id="drawer-tabs" role="group" aria-label="Detalhes do trem">
+                    <button class="drawer-tab active" type="button" data-pane="route"><i class="bi bi-signpost-2 me-1"></i>Rota</button>
+                    <button class="drawer-tab" type="button" data-pane="history"><i class="bi bi-clock-history me-1"></i>Histórico</button>
+                </div>
+                <div id="route-body"></div>
+                <div id="history-body" style="display:none"></div>
+            </div>
+        </aside>
+    </section>
+</main>
+
+<th:block th:replace="~{fragments/layout :: leaflet-js}"></th:block>
+
+<script th:inline="javascript">
+const TILE_URL         = /*[[${mapTileUrl}]]*/ '';
+const TILE_ATTRIBUTION = /*[[${mapTileAttribution}]]*/ '';
+const TILE_MAX_ZOOM    = /*[[${mapTileMaxZoom}]]*/ 18;
+const RAIL_URL         = /*[[${railOverlayUrl}]]*/ '';
+const RAIL_ATTRIBUTION = /*[[${railOverlayAttribution}]]*/ '';
+const REFRESH_MS       = /*[[${mapRefreshMs}]]*/ 10000;
+const DELAYED_MIN      = /*[[${delayedThreshold}]]*/ 5;
+const CATEGORIES       = /*[[${delayCategoryData}]]*/ [];
+</script>
+
+<script th:src="@{/js/map.js}"></script>
+</body>
+</html>
