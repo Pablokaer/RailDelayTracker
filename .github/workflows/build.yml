@@ -32,6 +32,9 @@ jobs:
       - name: Build and test
         run: mvn --batch-mode --no-transfer-progress verify
 
+      - name: Test the deploy script
+        run: bash deploy/test_deploy.sh
+
       - name: Publish test report
         if: always()
         uses: actions/upload-artifact@v4

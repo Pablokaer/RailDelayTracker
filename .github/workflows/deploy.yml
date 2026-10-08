@@ -1,0 +1,87 @@
+name: deploy
+
+# Continuous deployment to the production VPS (see docs/deploy.md): when the build passes on main, the jar is
+# built on the runner and streamed over SSH, with a key that can only run deploy.sh on the server. The server
+# swaps the jar, restarts the systemd service and rolls back by itself if the new version is not healthy.
+# Manual run: Actions -> deploy -> Run workflow (deploys the tip of main).
+#
+# Repository secrets: VPS_HOST (server IP or name), VPS_SSH_KEY (private deploy key),
+# VPS_KNOWN_HOSTS (output of `ssh-keyscan <host>`).
+
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://ierailmetrics.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit whose build passed, not whatever main has moved on to since.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Skip if main has moved on
+        id: fresh
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "HEAD is no longer the tip of main; a newer deploy will follow."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 21
+        if: steps.fresh.outputs.stale != 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # Tests already ran in the build workflow for this very commit.
+      - name: Package
+        if: steps.fresh.outputs.stale != 'true'
+        run: mvn --batch-mode --no-transfer-progress -DskipTests package
+
+      - name: Configure SSH
+        if: steps.fresh.outputs.stale != 'true'
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        if: steps.fresh.outputs.stale != 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        # The server ignores the remote command except for this sha (forced command); the jar goes in on stdin.
+        run: |
+          JAR="$(ls target/irishrail-*.jar | grep -v '\.original$' | head -n 1)"
+          SHA="$(git rev-parse HEAD)"
+          echo "Deploying $JAR ($(du -h "$JAR" | cut -f1)) as $SHA"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o BatchMode=yes "root@$VPS_HOST" "$SHA" < "$JAR"
+
+      - name: Smoke test
+        if: steps.fresh.outputs.stale != 'true'
+        run: curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null https://ierailmetrics.com/overview
