@@ -21,6 +21,17 @@ streamed in. Releases are kept in `releases/` (the newest 5), so a rollback is j
 
 ## One-time server setup
 
+**Shortcut:** `deploy/setup-vps.sh` does steps 1 to 4 below in one go (it finds the service running the jar today,
+repoints it at `current.jar` through a systemd drop-in, installs the script and authorizes the key; if the service
+does not come back healthy it restores the original unit):
+
+```bash
+scp deploy/deploy.sh deploy/setup-vps.sh root@<vps>:/tmp/
+ssh root@<vps> 'bash /tmp/setup-vps.sh "ssh-ed25519 AAAA... ierailmetrics-deploy"'   # SERVICE=<unit> if it cannot guess
+```
+
+The manual steps are kept for reference.
+
 Everything below runs as root on the VPS. Names and paths are the defaults of `deploy/deploy.sh`; override them with
 `APP_DIR`, `SERVICE` and `HEALTH_URL`; if yours differ (another service name or port), edit those defaults at the top
 of the installed copy.
