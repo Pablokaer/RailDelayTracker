@@ -9,7 +9,8 @@
 # the deploy key as a forced command. Safe to run again. Nothing is restarted until the very end, and if the service
 # does not come back healthy the previous jar path is restored.
 #
-# Overridable: SERVICE (unit name), APP_DIR, HEALTH_URL.
+# Overridable: SERVICE (unit name), APP_DIR, HEALTH_URL (persisted in deploy.sh), SETUP_CHECK_URL (used only for the
+# check at the end of this run, e.g. when the running jar predates /actuator/health).
 set -euo pipefail
 
 pubkey="${1:-}"
@@ -66,7 +67,7 @@ fi
 
 # 5. Restart on the new path and confirm.
 systemctl restart "$service"
-url="$(grep -o -E 'HEALTH_URL:-[^}]*' "$app_dir/deploy.sh" | head -n 1 | sed 's/HEALTH_URL:-//')"
+url="${SETUP_CHECK_URL:-$(grep -o -E "HEALTH_URL:-[^}]*" "$app_dir/deploy.sh" | head -n 1 | sed "s/HEALTH_URL:-//")}"
 for _ in $(seq 1 40); do
   if curl -fsS -o /dev/null --max-time 5 "$url"; then echo "OK: $service is healthy on $url via $app_dir/current.jar"; exit 0; fi
   sleep 3
