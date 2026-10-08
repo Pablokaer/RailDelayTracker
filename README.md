@@ -1,6 +1,10 @@
-# RailDelayTracker (IERailMetrics)
+<p align="center">
+  <img src="docs/logo.png" alt="IERailMetrics logo: a wolfhound carrying a mailbag" width="360">
+</p>
 
-[![build](https://github.com/Pablokaer/RailDelayTracker/actions/workflows/build.yml/badge.svg)](https://github.com/Pablokaer/RailDelayTracker/actions/workflows/build.yml)
+<p align="center">
+  <a href="https://github.com/Pablokaer/RailDelayTracker/actions/workflows/build.yml"><img src="https://github.com/Pablokaer/RailDelayTracker/actions/workflows/build.yml/badge.svg" alt="build"></a>
+</p>
 
 **RailDelayTracker** is a real-time monitoring and analytics platform for the Irish Rail network
 (Iarnród Éireann). In the browser it is branded **IERailMetrics**.
@@ -18,8 +22,11 @@ services running in and out of Dublin Heuston.
 
 ## Table of contents
 
+- [Screenshots](#screenshots)
 - [What the application does](#what-the-application-does)
+- [System design](#system-design)
 - [How it works](#how-it-works)
+- [How the project was built](#how-the-project-was-built)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
@@ -32,6 +39,32 @@ services running in and out of Dublin Heuston.
 - [Project structure](#project-structure)
 - [Testing and CI](#testing-and-ci)
 - [Data source and attribution](#data-source-and-attribution)
+
+---
+
+## Screenshots
+
+Captured from the running application with live Irish Rail data.
+
+**Network overview** (`/overview`): summary cards, the latest captured delays and the hourly
+delay pattern.
+
+![Network overview](docs/screenshots/overview-full.png)
+
+**Station scope** (`/overview?stationCode=CNLLY`): the same dashboard narrowed to Connolly
+(DART) services.
+
+![Connolly scope](docs/screenshots/connolly.png)
+
+**Live station board** (`/get?stationCode=CNLLY`): departures refreshed every 30 seconds, with
+northbound/southbound and delayed-only filters.
+
+![Live station board](docs/screenshots/station-board.png)
+
+**Live train map** (`/map`): every train in the country, coloured by delay and rotated to its
+heading.
+
+![Live train map](docs/screenshots/map.png)
 
 ---
 
@@ -116,6 +149,98 @@ the aggregates, so the two cannot disagree.
 | Extreme Delay | 40+ | red |
 
 A trip counts as **delayed** at 5 minutes or more (`DelayLimits.DELAYED_THRESHOLD_MINUTES`).
+
+---
+
+## System design
+
+IERailMetrics is a **single deployable**: one Spring Boot jar that collects data, stores it,
+aggregates it and serves the UI. There is no message broker, no separate worker and no SPA build.
+That is deliberate: the workload is one upstream feed polled every 30 seconds, so the simplest
+architecture that is still correct and cheap to run wins.
+
+```mermaid
+flowchart TB
+    U["Browser<br/>(Thymeleaf pages + vanilla JS)"]
+    P["Reverse proxy<br/>HTTPS, ierailmetrics.com"]
+    subgraph vps["VPS (systemd service)"]
+        APP["Spring Boot jar<br/>web + collector + aggregator"]
+        PG[("PostgreSQL")]
+    end
+    IR["Irish Rail realtime API"]
+    GH["GitHub Actions<br/>build, test, deploy"]
+
+    U <--> P <--> APP
+    APP <--> PG
+    APP -- "polls (bounded pool, timeouts)" --> IR
+    GH -- "jar over restricted SSH" --> APP
+```
+
+### Design decisions
+
+| Concern | Decision | Why |
+|---|---|---|
+| **Upstream load** | Collector, positions and routes call Irish Rail on fixed timers; everything the browser reads comes from in-memory caches | Upstream traffic is constant no matter how many people have the site open |
+| **Write volume** | Only departures whose delay *changed* are persisted, as one JDBC batch per scope | The raw table stays about 10x smaller than "snapshot everything every cycle" |
+| **Read cost** | Dashboards read three **daily aggregate tables**, not raw snapshots | About 75x less data per day of history, so "All time" stays fast |
+| **Aggregate freshness** | The collector marks touched trips as dirty; a 60 s job re-aggregates only those | Roll-ups are incremental and never rescan a whole day |
+| **Concurrency safety** | Idempotent UPSERTs behind a PostgreSQL advisory lock | Backfill and periodic roll-up cannot deadlock or double count |
+| **Retention** | Raw snapshots 30 days, aggregates forever, on separate cutoffs | History survives while disk usage stays bounded |
+| **Real time** | Payload-less SSE tick after each cycle, plus visibility-aware polling | Pages refresh when data changes and stay quiet in hidden tabs |
+| **Failure modes** | Stale-but-valid data (last station list, recent board, last positions) instead of an empty page | The upstream API is not always reliable |
+| **Resource limits** | Every cache, thread pool and the SSE list is bounded; every HTTP call has a timeout | No request parameter can grow memory without limit |
+| **Schema ownership** | Flyway owns DDL, Hibernate runs with `ddl-auto=validate` | A drifting entity fails the boot instead of corrupting data |
+| **Single source of truth** | `DelayCategory` drives UI colours **and** the generated SQL | The chart legend and the aggregates cannot disagree |
+
+### Data flow in one line
+
+`Irish Rail XML` → **collector** (filter, change detection) → `trip_station_snapshot` →
+**aggregator** (dirty trips, UPSERT) → `daily_*` tables → **query service** (cached dashboard) →
+JSON + Thymeleaf → **browser**, with an SSE tick telling open pages when to refetch.
+
+### Deployment
+
+Every commit that passes the `build` workflow on `main` is deployed automatically: the jar is built
+and tested on the GitHub runner, streamed over a restricted SSH key to `deploy/deploy.sh`, which
+swaps the release, restarts the systemd service and rolls back if the health check fails. The
+server never clones the repository and needs no Maven. Details: [docs/deploy.md](docs/deploy.md).
+
+---
+
+## How the project was built
+
+The project started on 4 May 2026 as a small DART delay tracker and grew in stages. Each stage
+kept the previous one working:
+
+1. **Collector and first dashboard (May).** A scheduled job polled the Connolly board, stored
+   delays in PostgreSQL and rendered a Thymeleaf page with Chart.js: top delays, hourly pattern,
+   station filter. Heuston services, mobile layout fixes and analytics followed.
+2. **Live features (July to August).** A live station board, a journey planner and the live train
+   map with per-train routes, parsed from the API's `PublicMessage` field and covered by unit
+   tests.
+3. **Performance pass (August).** The first version recomputed every chart from raw rows. It was
+   replaced with change-detection writes, batched JDBC inserts, incremental **daily aggregates**
+   and cached dashboards. This is the core of the current design.
+4. **Hardening (September).** Versioned Flyway schema, bounded caches, validation at the edge,
+   RFC 7807 errors, rate limiting, security headers and a retention policy.
+5. **Product design (October).** A new navigation shell and visual language, defined in
+   [`PRODUCT.md`](PRODUCT.md) and [`docs/design_reference/DESIGN_SYSTEM.md`](docs/design_reference/DESIGN_SYSTEM.md)
+   from the reference mockups in `docs/design_reference/`, without changing any API or
+   calculation. Link previews (Open Graph) and the wolfhound logo came with it.
+6. **Continuous delivery (October).** Build, test and deploy to the VPS on every push to `main`,
+   with automatic rollback.
+
+Working principles that shaped the code:
+
+- **Measure, then optimise.** Retention and aggregation numbers in this README come from a live
+  database, not estimates.
+- **Test what is easy to get wrong.** The message parser, geo maths, station de-duplication and
+  the delay-category SQL have unit tests; the aggregate roll-up has Testcontainers integration
+  tests against real PostgreSQL.
+- **Keep the stack boring.** Server-rendered pages, vanilla JS and one database; no build step on
+  the frontend.
+- **Design for a flaky upstream.** Timeouts, bounded pools and stale-data fallbacks everywhere
+  the Irish Rail API is called.
 
 ---
 
@@ -607,6 +732,9 @@ The application has no authentication: all pages are intentionally public and re
 
 ```
 .github/workflows/build.yml          # CI: mvn verify on every push / PR
+.github/workflows/deploy.yml         # CD: deploy main to the VPS over restricted SSH
+deploy/                              # deploy.sh, setup-vps.sh (server side) and tests
+docs/                                # deploy.md, design_reference/, screenshots/, logo.png
 scripts/maintenance/
   reclaim-space.sql                  # One-off disk reclaim after lowering retention
 
