@@ -125,22 +125,66 @@ function delayBadge(late) {
         : '<span class="delay-ok">On time</span>';
 }
 
-function renderOption(option) {
+function minutesBetween(start, end) {
+    const parse = value => {
+        const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+        return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    };
+    const a = parse(start), b = parse(end);
+    if (a === null || b === null) return null;
+    return (b - a + 1440) % 1440;
+}
+
+function renderOption(option, index) {
     const depart = option.expDepart || option.schDepart || '--';
     const arrive = option.expArrival || option.schArrival || '--';
     const last = option.lastLocation ? escapeHtml(option.lastLocation) : '<span class="muted">--</span>';
-    return `<tr>
+    const duration = minutesBetween(depart, arrive);
+    return `<tr data-train="${escapeHtml(option.trainCode || '')}" data-index="${index}" tabindex="0" aria-label="Select ${escapeHtml(option.trainCode || 'train')}">
         <td><span class="train-chip">${escapeHtml(option.trainCode || '--')}</span></td>
         <td class="muted">${escapeHtml(option.trainType || '--')}</td>
         <td>${escapeHtml(option.destination || '--')}</td>
         <td>${escapeHtml(option.direction || '--')}</td>
         <td>${escapeHtml(depart)}</td>
-        <td>${escapeHtml(arrive)}</td>
+        <td>${escapeHtml(arrive)}${duration !== null ? `<div class="muted" style="font-size:.7rem">${duration} min</div>` : ''}</td>
         <td>${dueText(Number(option.dueIn || 0))}</td>
         <td><span class="badge-status">${escapeHtml(option.status || '--')}</span></td>
         <td>${delayBadge(Number(option.late || 0))}</td>
         <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${last}</td>
     </tr>`;
+}
+
+function renderFastest(options) {
+    const ranked = options.map((option, index) => ({ option, index, duration: minutesBetween(option.expDepart || option.schDepart, option.expArrival || option.schArrival) }))
+        .filter(item => item.duration !== null).sort((a, b) => a.duration - b.duration);
+    const value = document.getElementById('fastest-value');
+    const meta = document.getElementById('fastest-meta');
+    if (!ranked.length) { value.textContent = 'Not available'; meta.textContent = 'No complete arrival and departure times.'; return; }
+    const fastest = ranked[0];
+    value.textContent = `${fastest.duration} min`;
+    meta.textContent = `${fastest.option.trainCode || 'Train'} · ${fastest.option.expDepart || fastest.option.schDepart || '--'} to ${fastest.option.expArrival || fastest.option.schArrival || '--'}`;
+}
+
+async function selectJourney(option, row) {
+    document.querySelectorAll('#journey-tbody tr').forEach(item => item.classList.remove('selected'));
+    row?.classList.add('selected');
+    const detail = document.getElementById('journey-detail');
+    detail.hidden = false;
+    document.getElementById('detail-train').textContent = `${option.trainType || 'Service'} ${option.trainCode || ''}`.trim();
+    document.getElementById('detail-route').textContent = `${selectedText('from-station')} to ${selectedText('to-station')} · ${option.expDepart || option.schDepart || '--'} to ${option.expArrival || option.schArrival || '--'}`;
+    document.getElementById('detail-status').textContent = option.status || (Number(option.late || 0) >= 5 ? 'Delayed' : 'On time');
+    const timeline = document.getElementById('journey-timeline');
+    timeline.innerHTML = '<div class="empty-state" style="padding:1rem"><i class="bi bi-arrow-clockwise spin me-2"></i>Loading live stops</div>';
+    try {
+        const route = await fetchJson(`/api/trains/${encodeURIComponent((option.trainCode || '').trim())}/route`, 12000);
+        const stops = Array.isArray(route.stops) ? route.stops : [];
+        timeline.innerHTML = stops.length ? stops.map(stop => `<div class="timeline-stop ${stop.reached ? 'reached' : ''} ${stop.next ? 'next' : ''}">
+            <span class="timeline-dot" aria-hidden="true"></span><div class="timeline-name">${escapeHtml(stop.name || stop.code || 'Stop')}</div>
+            <div class="timeline-time">${escapeHtml(stop.expectedDeparture || stop.expectedArrival || stop.scheduledDeparture || stop.scheduledArrival || '--')}${stop.next ? ' · Next' : stop.reached ? ' · Reached' : ''}</div>
+        </div>`).join('') : '<div class="empty-state" style="padding:1rem">No published stop sequence is available for this service.</div>';
+    } catch (error) {
+        timeline.innerHTML = '<div class="empty-state" style="padding:1rem">Unable to load the live stop sequence.</div>';
+    }
 }
 
 function renderEmpty(message) {
@@ -170,6 +214,8 @@ async function fetchJourneyOptions() {
         const options = Array.isArray(data.options) ? data.options : [];
         document.getElementById('clock').textContent = data.updatedAt || clockText();
         document.getElementById('result-count').textContent = `${options.length} train${options.length === 1 ? '' : 's'}`;
+        window.currentJourneyOptions = options;
+        renderFastest(options);
         document.getElementById('journey-tbody').innerHTML = options.length
             ? options.map(renderOption).join('')
             : `<tr><td colspan="10"><div class="empty-state"><i class="bi bi-train-front fs-1 d-block mb-2"></i>No matching live services found for this route.</div></td></tr>`;
@@ -186,4 +232,21 @@ stationPicker('from', STATIONS[0]);
 stationPicker('to', STATIONS[1]);
 document.getElementById('from-station').addEventListener('change', fetchJourneyOptions);
 document.getElementById('to-station').addEventListener('change', fetchJourneyOptions);
+document.getElementById('swap-stations').addEventListener('click', () => {
+    const from = document.getElementById('from-station');
+    const to = document.getElementById('to-station');
+    const value = from.value; from.value = to.value; to.value = value;
+    document.getElementById('from-station-input').value = nameOf(from.value);
+    document.getElementById('to-station-input').value = nameOf(to.value);
+    fetchJourneyOptions();
+});
+document.getElementById('journey-tbody').addEventListener('click', event => {
+    const row = event.target.closest('tr[data-index]');
+    if (row) selectJourney(window.currentJourneyOptions?.[Number(row.dataset.index)], row);
+});
+document.getElementById('journey-tbody').addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('tr[data-index]');
+    if (row) { event.preventDefault(); selectJourney(window.currentJourneyOptions?.[Number(row.dataset.index)], row); }
+});
 fetchJourneyOptions();

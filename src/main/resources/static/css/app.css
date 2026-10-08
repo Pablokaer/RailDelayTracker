@@ -27,32 +27,6 @@ body {
     min-height: 100vh;
 }
 
-/* ── header ──────────────────────────────────────────────────────────────── */
-
-.site-header {
-    background: linear-gradient(180deg, #0a1a0f, #0b1a12);
-    border-bottom: 2px solid var(--ir-green);
-    padding: 1rem 0;
-}
-.ir-logo {
-    min-width: 160px; height: 44px;
-    background: rgba(0, 184, 79, .14);
-    border: 1px solid rgba(0, 184, 79, .45);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    gap: .55rem; padding: 0 .8rem; flex-shrink: 0;
-    color: #3ecf73; font-weight: 800; letter-spacing: 0;
-    text-decoration: none;
-}
-.ir-logo:hover { color: #3ecf73; border-color: var(--ir-green); }
-.ir-logo-mark {
-    width: 28px; height: 28px;
-    background: var(--ir-green); color: #07110c;
-    border-radius: 6px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: .8rem; font-weight: 900;
-}
-.ir-logo-word { color: var(--text-primary); font-size: 1rem; white-space: nowrap; }
 
 .live-pill {
     display: inline-flex; align-items: center; gap: 6px;
@@ -112,16 +86,342 @@ body {
 @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: translateY(0) } }
 @keyframes rowSlideIn  { from { opacity: 0; transform: translateX(-5px) } to { opacity: 1; transform: translateX(0) } }
 
-/* ── responsive header ───────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Application shell — sidebar, header, content offset
+   One variable (--sidebar-current-width) drives the offset of the whole page, so the
+   sidebar never overlaps the content: it is fixed, and <body> reserves its width.
+   Below 992px the sidebar becomes an off-canvas drawer with a backdrop instead.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+    color-scheme: dark;
+    --ir-green: oklch(0.76 0.18 158);
+    --ir-green-strong: oklch(0.69 0.19 158);
+    --bg-main: oklch(0.145 0.018 245);
+    --bg-sidebar: oklch(0.13 0.025 238);
+    --bg-card: oklch(0.19 0.022 242);
+    --bg-elevated: oklch(0.205 0.024 242);
+    --bg-row: oklch(0.205 0.024 242);
+    --bg-row-alt: oklch(0.18 0.022 242);
+    --border: oklch(0.31 0.035 241);
+    --border-soft: oklch(0.26 0.03 241);
+    --text-primary: oklch(0.95 0.012 235);
+    --text-muted: oklch(0.72 0.035 238);
+    --red: oklch(0.68 0.20 24);
+    --amber: oklch(0.79 0.16 78);
+    --blue: oklch(0.69 0.14 248);
+    --sidebar-width: 248px;
+    --sidebar-collapsed-width: 72px;
+    --sidebar-current-width: var(--sidebar-width);
+    --header-height: 72px;
+    --shell-ease: cubic-bezier(.22, .8, .24, 1);
+}
+
+html { background: var(--bg-main); }
+body {
+    background:
+        radial-gradient(circle at 75% -15%, oklch(0.24 0.055 218 / .28), transparent 36rem),
+        var(--bg-main);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-variant-numeric: tabular-nums;
+    overflow-x: hidden;
+    padding-left: var(--sidebar-current-width);
+    transition: padding-left .22s var(--shell-ease);
+}
+body.sidebar-collapsed { --sidebar-current-width: var(--sidebar-collapsed-width); }
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: linear-gradient(oklch(0.8 0.02 230 / .018) 1px, transparent 1px), linear-gradient(90deg, oklch(0.8 0.02 230 / .012) 1px, transparent 1px);
+    background-size: 32px 32px;
+    z-index: -1;
+}
+
+/* ── sidebar ─────────────────────────────────────────────────────────────── */
+
+.app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 1040;
+    width: var(--sidebar-current-width);
+    padding: 14px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border-soft);
+    transition: width .22s var(--shell-ease), transform .26s var(--shell-ease), visibility 0s;
+    overflow: hidden;
+}
+.sidebar-brand {
+    height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 6px 14px 4px;
+    margin-bottom: 14px;
+    color: var(--text-primary);
+    font-size: 1.06rem;
+    font-weight: 750;
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-soft);
+    box-sizing: content-box;
+}
+.sidebar-brand strong { color: var(--ir-green); }
+.sidebar-logo { width: 44px; height: 44px; flex: none; object-fit: cover; border-radius: 10px; }
+
+.nav-close {
+    display: none;
+    position: absolute;
+    top: 22px;
+    right: 14px;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    color: var(--text-muted);
+}
+.nav-close:hover { color: var(--text-primary); background: var(--bg-elevated); }
+
+.sidebar-section {
+    padding: 4px 13px 6px;
+    color: var(--text-muted);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.sidebar-nav { display: grid; gap: 4px; }
+.sidebar-nav a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    min-height: 44px;
+    padding: 0 13px;
+    color: oklch(0.78 0.035 238);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: .9rem;
+    font-weight: 560;
+    white-space: nowrap;
+    transition: color .18s ease, background .18s ease, border-color .18s ease;
+}
+.sidebar-nav a i { flex: none; width: 20px; text-align: center; font-size: 1.05rem; }
+.sidebar-nav a:hover { color: var(--text-primary); background: oklch(0.21 0.035 230); }
+.sidebar-nav a.active {
+    color: oklch(0.96 0.02 158);
+    background: oklch(0.32 0.105 162 / .75);
+    border-color: oklch(0.65 0.16 158 / .35);
+}
+.sidebar-nav a.active::before {
+    content: "";
+    position: absolute;
+    left: -13px;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--ir-green);
+}
+
+.sidebar-footer { margin-top: auto; display: grid; gap: 8px; }
+.sidebar-status {
+    padding: 12px 13px;
+    display: grid;
+    gap: 4px;
+    color: var(--ir-green);
+    font-size: .78rem;
+    white-space: nowrap;
+    background: oklch(0.16 0.025 240);
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+}
+.sidebar-status span { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.sidebar-status small { color: var(--text-muted); }
+.sidebar-clock { color: var(--text-primary); font-weight: 650; }
+
+/* The collapse control lives inside the sidebar, so it can never float over page content. */
+.sidebar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    min-height: 40px;
+    width: 100%;
+    padding: 0 13px;
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: .84rem;
+    font-weight: 560;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .18s ease, background .18s ease, border-color .18s ease;
+}
+.sidebar-toggle i { flex: none; width: 20px; text-align: center; font-size: 1rem; }
+.sidebar-toggle:hover { background: var(--bg-elevated); color: var(--ir-green); border-color: var(--border); }
+
+body.sidebar-collapsed .sidebar-brand { padding-inline: 0; justify-content: center; }
+body.sidebar-collapsed .sidebar-brand span,
+body.sidebar-collapsed .sidebar-nav a span,
+body.sidebar-collapsed .sidebar-toggle span,
+body.sidebar-collapsed .sidebar-section,
+body.sidebar-collapsed .sidebar-status { display: none; }
+body.sidebar-collapsed .sidebar-nav a,
+body.sidebar-collapsed .sidebar-toggle { justify-content: center; padding-inline: 0; }
+body.sidebar-collapsed .sidebar-nav a.active::before { left: -12px; }
+body.sidebar-collapsed .sidebar-toggle i { transform: rotate(180deg); }
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 1025;
+    min-height: var(--header-height);
+    display: flex;
+    align-items: center;
+    background: oklch(0.15 0.023 241 / .94);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+}
+.site-header .header-content { width: 100%; max-width: 1680px; margin-inline: auto; }
+.header-row { display: flex; align-items: center; gap: 14px; min-height: var(--header-height); }
+.header-titles { min-width: 0; }
+#page-title { font-size: 1.5rem !important; letter-spacing: -.02em; line-height: 1.15; font-weight: 700; }
+.page-subtitle { margin-top: 3px; color: var(--text-muted); font-size: .8rem; }
+.title-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header-status { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.header-updated { font-size: .75rem; color: var(--text-muted); }
+.header-select { margin-left: 8px; }
+
+.nav-open {
+    display: none;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    position: relative;
+    overflow: hidden;
+    /* The wolfhound mark sits behind the glyph; the scrim keeps the icon readable (AA). */
+    background: linear-gradient(oklch(0.13 0.025 238 / .55), oklch(0.13 0.025 238 / .55)), url("/images/logo_wolfhound.png") center / cover no-repeat;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 1.3rem;
+}
+.nav-open i { filter: drop-shadow(0 1px 2px oklch(0.05 0.02 240 / .9)); }
+.nav-open:hover { border-color: var(--ir-green); color: var(--ir-green); }
+.sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1035;
+    background: oklch(0.08 0.02 240 / .62);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .22s ease, visibility 0s linear .22s;
+}
+.sidebar-backdrop.show { opacity: 1; visibility: visible; transition-delay: 0s; }
+
+/* ── page-level furniture shared by every view ───────────────────────────── */
+
+.live-pill { border-radius: 6px; text-transform: uppercase; font-size: .69rem; letter-spacing: .08em; }
+.station-select, .search-box, .date-input, .form-control, .form-select {
+    min-height: 38px;
+    background-color: oklch(0.16 0.024 242) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+}
+:where(a, button, input, select, [tabindex]):focus-visible { outline: 2px solid var(--ir-green); outline-offset: 2px; }
+
+body > main.container-fluid, .overview-ranking { max-width: 1680px; margin-inline: auto; }
+body > .tab-nav { padding-inline: 1.5rem; }
+body > .tab-nav .tab-nav-btn { min-height: 46px; }
+
+.board-wrap, .chart-card, .a-stat-card, .filter-period-bar, .map-panel, .map-wrap {
+    background: linear-gradient(145deg, oklch(0.205 0.027 240), oklch(0.175 0.021 244)) !important;
+    border-color: oklch(0.31 0.035 241) !important;
+    box-shadow: 0 2px 8px oklch(0.07 0.02 240 / .16) !important;
+}
+.a-stat-card { text-align: left !important; min-height: 88px; padding: .9rem 1.15rem !important; display: flex; flex-direction: column-reverse; justify-content: center; gap: 6px; }
+.a-stat-val { font-size: 1.65rem !important; letter-spacing: -.025em; }
+.a-stat-lbl { text-transform: none !important; letter-spacing: 0 !important; font-size: .78rem !important; margin-top: 0 !important; color: var(--text-muted); }
+.section-header {
+    border-left: 0 !important;
+    color: var(--text-primary) !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    font-size: .92rem !important;
+}
+.section-header i { color: var(--ir-green); font-size: 1rem !important; }
+.scope-tabs { gap: 6px; }
+.scope-tab { border-radius: 6px; min-height: 38px; }
+.scope-tab.active { color: oklch(0.95 0.04 158); background: oklch(0.38 0.13 160); }
+thead th { background: oklch(0.23 0.03 239) !important; letter-spacing: .045em !important; }
+tbody tr { border-color: oklch(0.28 0.03 241) !important; }
+tbody tr:hover { background: oklch(0.25 0.035 236) !important; }
+.table-scroll, .table-responsive { scrollbar-gutter: stable; overflow-x: auto; }
+.table-scroll th, .table-scroll td, .table-responsive th, .table-responsive td { padding-inline: .8rem !important; }
+.text-danger, .delay-red { color: var(--red) !important; }
+.period-btn, .chip, .drawer-tab { border-radius: 6px !important; }
+.a-stat-card, .stat-card, .chart-card, .board-wrap { opacity:1 !important; transform:none !important; }
+main .row.mb-5 { margin-bottom:1.25rem !important; }
+.chart-card, .board-wrap { overflow:hidden; }
+.empty-state, .empty-full { min-height:120px; display:grid; place-content:center; gap:.4rem; }
+.badge-late, .delay-late { border:1px solid oklch(0.68 0.20 24 / .38); background:oklch(0.68 0.20 24 / .12); color:oklch(0.78 0.16 24); border-radius:5px; padding:2px 7px; }
+.badge-ontime, .delay-ok { border:1px solid oklch(0.76 0.18 158 / .32); background:oklch(0.76 0.18 158 / .1); color:var(--ir-green); border-radius:5px; padding:2px 7px; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ── tablet and phone: the sidebar becomes an off-canvas drawer ──────────── */
+
+@media (max-width: 991px) {
+    :root { --header-height: 64px; }
+    body, body.sidebar-collapsed { --sidebar-current-width: 0px; }
+    .app-sidebar {
+        width: min(300px, 86vw);
+        transform: translateX(-102%);
+        visibility: hidden;
+        box-shadow: 12px 0 40px oklch(0.05 0.02 240 / .55);
+        transition: transform .26s var(--shell-ease), visibility 0s linear .26s;
+    }
+    .app-sidebar.open { transform: none; visibility: visible; transition-delay: 0s; }
+    /* The drawer is always shown expanded, whatever the saved desktop preference was. */
+    body.sidebar-collapsed .sidebar-brand { padding-inline: 4px 6px; justify-content: flex-start; }
+    body.sidebar-collapsed .sidebar-brand span,
+    body.sidebar-collapsed .sidebar-nav a span,
+    body.sidebar-collapsed .sidebar-section { display: initial; }
+    body.sidebar-collapsed .sidebar-status { display: grid; }
+    body.sidebar-collapsed .sidebar-nav a { justify-content: flex-start; padding-inline: 13px; }
+    .sidebar-toggle { display: none; }
+    .nav-open, .nav-close { display: grid; }
+    body > .tab-nav { padding-inline: 12px; overflow-x: auto; }
+}
 
 @media (max-width: 575px) {
-    .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
-    .site-header .d-flex { flex-wrap: wrap; row-gap: 6px; }
-    .site-header .d-flex > * { order: 2; }
-    .site-header .ir-logo { order: 1; margin: 0 auto 4px; }
-    .site-header .ir-logo + div { order: 2; flex: 0 0 100%; text-align: center; }
-    .site-header .ms-3 { order: 9; flex: 0 0 100%; margin-left: 0 !important; }
-    .site-header .ms-auto { order: 10; flex: 0 0 100%; align-items: center !important; margin-left: 0 !important; }
+    .site-header .header-content { padding-inline: 12px !important; }
+    .header-row { flex-wrap: wrap; row-gap: 8px; padding-block: 10px; }
+    .header-status { flex-direction: row; align-items: center; gap: 8px; }
+    .header-titles { flex: 1 1 0; }
+    .header-select { order: 5; flex: 0 0 100%; margin-left: 0; }
     .station-select { width: 100%; }
+    #page-title { font-size: 1.1rem !important; }
+    .page-subtitle { font-size: .72rem; }
+    .header-updated { display: none; }
+    body > main { padding: 14px 10px !important; }
+    .a-stat-card { min-height: 92px; }
     .scope-tab { flex: 1 1 auto; justify-content: center; padding: .5rem .65rem; }
+}
+
+@media (max-width: 419px) {
+    .analytics-stats, .map-stats { grid-template-columns: 1fr !important; }
 }

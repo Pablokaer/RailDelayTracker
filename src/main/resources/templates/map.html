@@ -12,6 +12,12 @@
             gap: 1rem;
             min-height: calc(100vh - 170px);
         }
+        .map-overview { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin-bottom:.75rem; }
+        .map-overview .map-stat { min-height:84px; display:grid; grid-template-columns:40px 1fr; column-gap:.75rem; align-items:center; text-align:left; padding:.8rem 1rem; background:var(--bg-card); }
+        .metric-icon { width:40px; height:40px; display:grid; place-items:center; border-radius:50%; background:oklch(0.25 0.035 241); color:var(--text-primary); font-size:1.05rem; grid-row:1 / span 2; }
+        .map-toolbar { display:flex; align-items:center; gap:.75rem; padding:.7rem; margin-bottom:.75rem; border:1px solid var(--border); border-radius:10px; background:var(--bg-card); }
+        .map-toolbar .search-box { flex:1 1 360px; }
+        .map-toolbar .chip-row { flex:2 1 auto; }
         .map-wrap {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -103,7 +109,7 @@
             width: 100%;
             background: transparent;
             border: 0;
-            border-left: 3px solid transparent;
+            border-left: 0;
             border-bottom: 1px solid rgba(31, 51, 72, .65);
             color: var(--text-primary);
             padding: .6rem 1rem;
@@ -114,7 +120,7 @@
             transition: background .12s, border-color .12s;
         }
         .train-row:hover { background: var(--bg-row); }
-        .train-row.selected { background: var(--bg-row); border-left-color: var(--ir-green); }
+        .train-row.selected { background:oklch(0.28 0.07 160 / .42); box-shadow:inset 0 0 0 1px var(--ir-green); }
         .train-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .84rem; font-weight: 800; color: #3ecf73; }
         .train-delay { font-size: .76rem; font-weight: 700; white-space: nowrap; }
         .train-leg { color: var(--text-muted); font-size: .76rem; grid-column: 1 / -1; line-height: 1.35; }
@@ -234,6 +240,9 @@
 
         @media (max-width: 991px) {
             .map-shell { grid-template-columns: 1fr; }
+            .map-overview { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .map-toolbar { align-items:stretch; flex-direction:column; }
+            .map-toolbar .search-box { flex-basis:auto; }
             .map-wrap, #train-map { min-height: 520px; }
             .map-panel { min-height: 420px; }
         }
@@ -241,6 +250,9 @@
             .map-wrap, #train-map { min-height: 440px; }
             .map-stats { grid-template-columns: repeat(3, 1fr); gap: .35rem; padding: .6rem .7rem; }
             .map-legend { display: none; }
+            .map-overview { grid-template-columns:1fr 1fr; }
+            .map-overview .map-stat { grid-template-columns:32px 1fr; padding:.65rem; }
+            .metric-icon { width:32px; height:32px; }
         }
     </style>
 </head>
@@ -249,11 +261,24 @@
 <th:block th:replace="~{fragments/layout :: site-header('Train Map', 'Irish Rail live positions', true, 'LIVE MAP', null, 'changeView')}"></th:block>
 
 <main class="container-fluid px-4 py-4">
-    <nav class="scope-tabs" aria-label="Main navigation">
-        <a href="/overview" class="scope-tab"><i class="bi bi-diagram-3"></i><span>Overview</span></a>
-        <a href="/journey" class="scope-tab"><i class="bi bi-signpost-split"></i><span>Journey</span></a>
-        <a href="/map" class="scope-tab active"><i class="bi bi-geo-alt"></i><span>Map</span></a>
-    </nav>
+    <section class="map-overview" aria-label="Live train metrics">
+        <div class="map-stat"><span class="metric-icon"><i class="bi bi-train-front"></i></span><div id="stat-shown" class="map-stat-value">0</div><div class="map-stat-label">Shown</div></div>
+        <div class="map-stat"><span class="metric-icon" style="color:var(--ir-green)"><i class="bi bi-play-fill"></i></span><div id="stat-running" class="map-stat-value" style="color:var(--ir-green)">0</div><div class="map-stat-label">Running</div></div>
+        <div class="map-stat"><span class="metric-icon" style="color:var(--red)"><i class="bi bi-exclamation-circle"></i></span><div id="stat-delayed" class="map-stat-value" style="color:var(--red)">0</div><div class="map-stat-label">Delayed</div></div>
+        <div class="map-stat"><span class="metric-icon"><i class="bi bi-arrow-clockwise"></i></span><div id="stat-refresh" class="map-stat-value">--:--</div><div class="map-stat-label">Last refresh</div></div>
+    </section>
+
+    <section class="map-toolbar" aria-label="Map filters">
+        <label class="visually-hidden" for="train-search">Filter trains</label>
+        <input type="search" id="train-search" class="search-box" autocomplete="off" placeholder="Filter by train code, origin or destination">
+        <div class="chip-row" id="status-chips" role="group" aria-label="Status and layer filters">
+            <button class="chip active" type="button" data-status="running">Running</button>
+            <button class="chip" type="button" data-status="all">All trains</button>
+            <button class="chip" type="button" id="chip-delayed" data-toggle="delayed">Delayed only</button>
+            <button class="chip" type="button" id="chip-stations" data-toggle="stations">Stations</button>
+            <button class="chip" type="button" id="chip-rails" data-toggle="rails">Tracks</button>
+        </div>
+    </section>
 
     <section class="map-shell">
         <div class="map-wrap">
@@ -281,33 +306,6 @@
                 <div id="capture-meta" class="capture-meta">Waiting for Irish Rail API response</div>
             </div>
 
-            <div class="map-stats">
-                <div class="map-stat">
-                    <div id="stat-shown" class="map-stat-value">0</div>
-                    <div class="map-stat-label">Shown</div>
-                </div>
-                <div class="map-stat">
-                    <div id="stat-running" class="map-stat-value" style="color:#3ecf73">0</div>
-                    <div class="map-stat-label">Running</div>
-                </div>
-                <div class="map-stat">
-                    <div id="stat-delayed" class="map-stat-value" style="color:#f87171">0</div>
-                    <div class="map-stat-label">Delayed</div>
-                </div>
-            </div>
-
-            <div class="panel-controls">
-                <input type="search" id="train-search" class="search-box" autocomplete="off"
-                       placeholder="Filter by train code, origin or destination">
-                <div class="chip-row" id="status-chips" role="group" aria-label="Status filter">
-                    <button class="chip active" type="button" data-status="running">Running</button>
-                    <button class="chip" type="button" data-status="all">All trains</button>
-                    <button class="chip" type="button" id="chip-delayed" data-toggle="delayed">Delayed only</button>
-                    <button class="chip" type="button" id="chip-stations" data-toggle="stations">Stations</button>
-                    <button class="chip" type="button" id="chip-rails" data-toggle="rails">Trilhos</button>
-                </div>
-            </div>
-
             <div id="train-list" class="train-list">
                 <div class="empty-state">
                     <i class="bi bi-geo-alt fs-1 d-block mb-2"></i>
@@ -317,12 +315,12 @@
 
             <div id="history-panel" class="history-panel">
                 <div class="history-head">
-                    <span class="history-title"><span id="history-title-code">Detalhes</span></span>
-                    <button class="history-close" type="button" id="history-close" aria-label="Fechar">&times;</button>
+                    <span class="history-title"><span id="history-title-code">Train details</span></span>
+                    <button class="history-close" type="button" id="history-close" aria-label="Close train details">&times;</button>
                 </div>
-                <div class="drawer-tabs" id="drawer-tabs" role="group" aria-label="Detalhes do trem">
-                    <button class="drawer-tab active" type="button" data-pane="route"><i class="bi bi-signpost-2 me-1"></i>Rota</button>
-                    <button class="drawer-tab" type="button" data-pane="history"><i class="bi bi-clock-history me-1"></i>Histórico</button>
+                <div class="drawer-tabs" id="drawer-tabs" role="group" aria-label="Train details">
+                    <button class="drawer-tab active" type="button" data-pane="route"><i class="bi bi-signpost-2 me-1"></i>Journey progress</button>
+                    <button class="drawer-tab" type="button" data-pane="history"><i class="bi bi-clock-history me-1"></i>Delay history</button>
                 </div>
                 <div id="route-body"></div>
                 <div id="history-body" style="display:none"></div>

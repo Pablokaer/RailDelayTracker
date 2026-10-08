@@ -22,6 +22,87 @@ function changeView(code) {
     }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const path = window.location.pathname;
+    document.querySelectorAll('[data-nav-path]').forEach(link => {
+        link.classList.toggle('active', link.dataset.navPath === path);
+    });
+    initSidebar();
+
+    const sidebarClock = document.querySelector('.sidebar-clock');
+    if (sidebarClock) sidebarClock.textContent = clockText();
+});
+
+/**
+ * Sidebar behaviour. On desktop it is a persistent column that collapses to an icon rail
+ * (preference remembered; with no saved preference, medium screens start collapsed so the
+ * content keeps its width). Below 992px it is an off-canvas drawer opened from the header.
+ */
+function initSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const collapse = document.querySelector('.sidebar-toggle');
+    const opener = document.querySelector('.nav-open');
+    const closer = document.querySelector('.nav-close');
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (!sidebar) return;
+
+    const STORAGE_KEY = 'ierail-sidebar-collapsed';
+    const desktop = window.matchMedia('(min-width: 992px)');
+    const read = () => { try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; } };
+    const write = (value) => { try { localStorage.setItem(STORAGE_KEY, value); } catch (e) { /* private mode */ } };
+
+    const setCollapsed = (collapsed) => {
+        document.body.classList.toggle('sidebar-collapsed', collapsed);
+        if (!collapse) return;
+        const label = collapsed ? 'Expand navigation' : 'Collapse navigation';
+        collapse.setAttribute('aria-expanded', String(!collapsed));
+        collapse.setAttribute('aria-label', label);
+        collapse.title = label;
+        const text = collapse.querySelector('span');
+        if (text) text.textContent = collapsed ? 'Expand' : 'Collapse';
+    };
+    const setDrawer = (open) => {
+        sidebar.classList.toggle('open', open);
+        if (backdrop) backdrop.classList.toggle('show', open);
+        if (opener) {
+            opener.setAttribute('aria-expanded', String(open));
+            opener.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+        }
+        if (open) {
+            const first = sidebar.querySelector('.sidebar-nav a');
+            if (first) first.focus();
+        } else if (opener && !desktop.matches && document.activeElement && sidebar.contains(document.activeElement)) {
+            opener.focus();
+        }
+    };
+    const applyMode = () => {
+        setDrawer(false);
+        if (desktop.matches) {
+            const saved = read();
+            setCollapsed(saved === null ? window.innerWidth < 1280 : saved === 'true');
+        } else {
+            document.body.classList.remove('sidebar-collapsed');
+        }
+    };
+
+    if (collapse) collapse.addEventListener('click', () => {
+        const collapsed = !document.body.classList.contains('sidebar-collapsed');
+        setCollapsed(collapsed);
+        write(String(collapsed));
+    });
+    if (opener) opener.addEventListener('click', () => setDrawer(!sidebar.classList.contains('open')));
+    if (closer) closer.addEventListener('click', () => setDrawer(false));
+    if (backdrop) backdrop.addEventListener('click', () => setDrawer(false));
+    sidebar.addEventListener('click', (event) => {
+        if (event.target.closest('a') && !desktop.matches) setDrawer(false);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && sidebar.classList.contains('open')) setDrawer(false);
+    });
+    desktop.addEventListener('change', applyMode);
+    applyMode();
+}
+
 /** "HH:MM:SS" in 24h form, for the "Updated" stamp in the header. */
 function clockText(date) {
     return (date || new Date()).toLocaleTimeString('en-IE', {
