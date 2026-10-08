@@ -704,6 +704,11 @@ The integration suite checks that:
 request. The GitHub runner has Docker, so the integration tests run against a real PostgreSQL.
 Test reports are uploaded as build artifacts.
 
+**CD:** `.github/workflows/deploy.yml` deploys every commit that passes the build on `main` to the VPS: it
+packages the jar on the runner and streams it over a restricted SSH key to `deploy/deploy.sh`, which swaps the
+release, restarts the systemd service and rolls back if the health check fails. Setup and rollback:
+[docs/deploy.md](docs/deploy.md).
+
 ---
 
 ## Data source and attribution
