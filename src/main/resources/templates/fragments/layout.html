@@ -26,6 +26,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#07131f">
     <link rel="icon" type="image/png" th:href="@{/images/logo_wolfhound.png}">
+    <meta name="description" content="Live Irish Rail delays, punctuality analytics, a station-to-station journey planner and a real-time train map.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="IERailMetrics">
+    <meta property="og:title" content="IERailMetrics — Live Irish Rail delays &amp; punctuality">
+    <meta property="og:description" content="Live delays, punctuality analytics, journey planner and a real-time train map for Irish Rail.">
+    <meta property="og:url" th:content="${siteUrl}">
+    <meta property="og:image" th:content="${siteUrl + '/images/og-image.png'}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="IERailMetrics wolfhound logo">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="IERailMetrics — Live Irish Rail delays &amp; punctuality">
+    <meta name="twitter:description" content="Live delays, punctuality analytics, journey planner and a real-time train map for Irish Rail.">
+    <meta name="twitter:image" th:content="${siteUrl + '/images/og-image.png'}">
     <!-- Every vendor asset comes from this one origin (Leaflet used to come from unpkg, a third
          DNS lookup and TLS handshake on the critical path); open the connection before the parser
          reaches the first stylesheet. -->
