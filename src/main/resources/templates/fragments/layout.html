@@ -24,6 +24,8 @@
 <th:block th:fragment="base-assets">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#07131f">
+    <link rel="icon" type="image/png" th:href="@{/images/logo_wolfhound.png}">
     <!-- Every vendor asset comes from this one origin (Leaflet used to come from unpkg, a third
          DNS lookup and TLS handshake on the critical path); open the connection before the parser
          reaches the first stylesheet. -->
@@ -76,40 +78,67 @@
   `navHandler` is the JS function the selector calls — usually `changeView` from app.js,
   but the overview swaps scope in place instead of navigating, so it passes its own.
 -->
-<header th:fragment="site-header(pageTitle, pageSubtitle, showNavSelect, liveLabel, updatedAt, navHandler)"
-        class="site-header">
-    <div class="container-fluid px-4">
-        <div class="d-flex align-items-center gap-3">
-            <a class="ir-logo" href="/overview" aria-label="IERailMetrics home">
-                <span class="ir-logo-mark">IE</span>
-                <span class="ir-logo-word">IERailMetrics</span>
-            </a>
-            <div>
-                <div class="fw-bold fs-5 lh-1" id="page-title" th:text="${pageTitle}">IERailMetrics</div>
-                <div style="font-size:.8rem;color:var(--text-muted)" th:text="${pageSubtitle}">Irish Rail</div>
+<th:block th:fragment="site-header(pageTitle, pageSubtitle, showNavSelect, liveLabel, updatedAt, navHandler)">
+    <aside class="app-sidebar" id="app-sidebar" aria-label="Primary navigation">
+        <a class="sidebar-brand" href="/overview" aria-label="IERailMetrics home">
+            <img class="sidebar-logo" th:src="@{/images/logo_wolfhound.png}" alt="">
+            <span><strong>IE</strong>RailMetrics</span>
+        </a>
+        <button class="nav-close" type="button" aria-label="Close navigation"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+        <div class="sidebar-section">Navigate</div>
+        <nav class="sidebar-nav">
+            <a href="/overview" data-nav-path="/overview" title="Overview"><i class="bi bi-house-door-fill"></i><span>Overview</span></a>
+            <a href="/get" data-nav-path="/get" title="Stations"><i class="bi bi-geo-alt-fill"></i><span>Stations</span></a>
+            <a href="/journey" data-nav-path="/journey" title="Journey Planner"><i class="bi bi-train-front-fill"></i><span>Journey Planner</span></a>
+            <a href="/map" data-nav-path="/map" title="Live Map"><i class="bi bi-map-fill"></i><span>Live Map</span></a>
+            <a href="/overview#station-ranking" title="Reports"><i class="bi bi-bar-chart-fill"></i><span>Reports</span></a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="sidebar-status">
+                <span><i class="live-dot"></i> Live data</span>
+                <small>Last updated <time class="sidebar-clock">--:--:--</time></small>
             </div>
-            <div class="ms-3" th:if="${showNavSelect}">
-                <select class="station-select" id="station-selector"
-                        aria-label="Switch view or station"
-                        th:attr="onchange=${navHandler} + '(this.value)'">
-                    <option value="MAP" th:selected="${selectedCode == 'MAP'}">Train Map</option>
-                    <option value="JOURNEY" th:selected="${selectedCode == 'JOURNEY'}">Journey Planner</option>
-                    <option value="OVERVIEW" th:selected="${selectedCode == 'OVERVIEW'}">Overview — All Stations</option>
-                    <option th:each="s : ${stations}"
-                            th:value="${s.stationCode}"
-                            th:text="${s.stationDesc}"
-                            th:selected="${s.stationCode == selectedCode}"></option>
-                </select>
-            </div>
-            <div class="ms-auto d-flex flex-column align-items-end gap-1" th:if="${liveLabel != null}">
-                <div class="live-pill" id="live-pill"><span class="live-dot"></span><span th:text="${liveLabel}">LIVE</span></div>
-                <div style="font-size:.75rem;color:var(--text-muted)">
-                    Updated <span id="clock" th:text="${updatedAt ?: '--:--:--'}">--:--:--</span>
+            <button class="sidebar-toggle" type="button" aria-label="Collapse navigation" aria-controls="app-sidebar" aria-expanded="true" title="Collapse navigation">
+                <i class="bi bi-chevron-bar-left" aria-hidden="true"></i><span>Collapse</span>
+            </button>
+        </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+    <header class="site-header">
+        <div class="container-fluid px-4 header-content">
+            <div class="header-row">
+                <button class="nav-open" type="button" aria-label="Open navigation" aria-controls="app-sidebar" aria-expanded="false">
+                    <i class="bi bi-list" aria-hidden="true"></i>
+                </button>
+                <div class="header-titles">
+                    <div class="title-line">
+                        <div class="fw-bold lh-1" id="page-title" th:text="${pageTitle}">IERailMetrics</div>
+                        <div class="live-pill" id="live-pill" th:if="${liveLabel != null}"><span class="live-dot"></span><span th:text="${liveLabel}">LIVE</span></div>
+                    </div>
+                    <div class="page-subtitle" th:text="${pageSubtitle}">Irish Rail</div>
+                </div>
+                <div class="header-select" th:if="${showNavSelect}">
+                    <select class="station-select" id="station-selector"
+                            aria-label="Switch view or station"
+                            th:attr="onchange=${navHandler} + '(this.value)'">
+                        <option value="MAP" th:selected="${selectedCode == 'MAP'}">Train Map</option>
+                        <option value="JOURNEY" th:selected="${selectedCode == 'JOURNEY'}">Journey Planner</option>
+                        <option value="OVERVIEW" th:selected="${selectedCode == 'OVERVIEW'}">Overview — All Stations</option>
+                        <option th:each="s : ${stations}"
+                                th:value="${s.stationCode}"
+                                th:text="${s.stationDesc}"
+                                th:selected="${s.stationCode == selectedCode}"></option>
+                    </select>
+                </div>
+                <div class="header-status" th:if="${liveLabel != null}">
+                    <div class="header-updated">
+                        Updated <span id="clock" th:text="${updatedAt ?: '--:--:--'}">--:--:--</span>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</header>
+    </header>
+</th:block>
 
 </body>
 </html>

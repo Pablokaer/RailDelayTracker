@@ -5,7 +5,7 @@
     <title>IERailMetrics — Journey Planner</title>
     <style>
         .planner-panel { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem; }
-        .planner-grid { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap:.8rem; align-items:end; }
+        .planner-grid { display:grid; grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr) auto; gap:.8rem; align-items:end; }
         .field-label { color:var(--text-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.35rem; }
         .station-select, .action-btn { height:42px; border-radius:8px; font-size:.9rem; }
         .station-select { width:100%; background:#101a25; border:1px solid var(--border); color:var(--text-primary); padding:0 .8rem; outline:none; }
@@ -23,6 +23,8 @@
         .station-options li.no-match { color:var(--text-muted); cursor:default; }
         .action-btn { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; background:var(--ir-green); color:#06100a; border:1px solid var(--ir-green); font-weight:800; padding:0 1rem; min-width:120px; }
         .action-btn:disabled { opacity:.65; cursor:wait; }
+        .swap-btn { width:44px; height:42px; border:1px solid var(--border); border-radius:8px; background:var(--bg-elevated); color:var(--text-primary); }
+        .swap-btn:hover { border-color:var(--ir-green); color:var(--ir-green); }
 
         .summary-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; color:var(--text-muted); font-size:.85rem; margin-bottom:.75rem; }
         .board-wrap { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,.5); }
@@ -42,24 +44,42 @@
         .delay-late { background:rgba(224,52,52,.18); color:#f87171; border:1px solid rgba(224,52,52,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
         .delay-ok { background:rgba(59,130,246,.18); color:#60a5fa; border:1px solid rgba(59,130,246,.3); border-radius:5px; padding:2px 8px; font-size:.75rem; }
         .empty-state { padding:3rem 1rem; text-align:center; color:var(--text-muted); }
+        .planner-layout { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:1rem; align-items:start; }
+        .journey-detail { margin-top:1rem; padding:1rem; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; }
+        .journey-detail[hidden] { display:none; }
+        .journey-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; padding-bottom:.9rem; border-bottom:1px solid var(--border); }
+        .journey-title { font-size:1rem; font-weight:750; }
+        .journey-meta { color:var(--text-muted); font-size:.78rem; margin-top:.2rem; }
+        .timeline { display:flex; align-items:flex-start; overflow-x:auto; padding:1.2rem .25rem .35rem; }
+        .timeline-stop { min-width:120px; flex:1; position:relative; padding-top:20px; font-size:.72rem; }
+        .timeline-stop::before { content:""; position:absolute; top:6px; left:8px; right:-8px; height:2px; background:var(--border); }
+        .timeline-stop:last-child::before { right:calc(100% - 9px); }
+        .timeline-dot { position:absolute; top:1px; left:2px; width:12px; height:12px; border-radius:50%; border:2px solid var(--text-muted); background:var(--bg-card); }
+        .timeline-stop.reached .timeline-dot { border-color:var(--ir-green); background:var(--ir-green); }
+        .timeline-stop.next .timeline-dot { border-color:var(--ir-green); box-shadow:0 0 0 4px oklch(0.76 0.18 158 / .15); }
+        .timeline-stop.reached::before { background:var(--ir-green); }
+        .timeline-name { font-weight:650; color:var(--text-primary); }
+        .timeline-time { color:var(--text-muted); margin-top:.2rem; }
+        .planner-aside { display:grid; gap:.8rem; }
+        .insight-card { border:1px solid var(--border); border-radius:10px; padding:1rem; background:var(--bg-card); }
+        .insight-label { color:var(--text-muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; }
+        .insight-value { font-size:1.4rem; font-weight:750; margin-top:.35rem; }
+        #journey-tbody tr[data-train] { cursor:pointer; }
+        #journey-tbody tr.selected { outline:1px solid var(--ir-green); outline-offset:-1px; background:oklch(0.28 0.07 160 / .45) !important; }
         @media (max-width: 760px) {
-            .site-header .d-flex { flex-wrap:wrap; }
             .planner-grid { grid-template-columns:1fr; }
+            .swap-btn { width:100%; }
             .action-btn { width:100%; }
             .scope-tab { flex:1 1 auto; justify-content:center; padding:.5rem .65rem; }
         }
+        @media (max-width: 1100px) { .planner-layout { grid-template-columns:minmax(0,1fr); } .planner-aside { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+        @media (max-width: 640px) { .planner-aside { grid-template-columns:1fr; } .timeline { display:grid; overflow:visible; padding-left:1.4rem; } .timeline-stop { min-width:0; padding:0 0 1.2rem 1.2rem; } .timeline-stop::before { top:8px; bottom:-8px; left:-14px; width:2px; height:auto; right:auto; } .timeline-stop:last-child::before { display:none; } .timeline-dot { top:2px; left:-19px; } }
     </style>
 </head>
 <body>
 <th:block th:replace="~{fragments/layout :: site-header('Journey Planner', 'Irish Rail live station-to-station options', false, 'LIVE', null, 'changeView')}"></th:block>
 
 <main class="container-fluid px-4 py-4">
-    <nav class="scope-tabs" aria-label="Main navigation">
-        <a href="/overview" class="scope-tab"><i class="bi bi-diagram-3"></i><span>Overview</span></a>
-        <a href="/journey" class="scope-tab active"><i class="bi bi-signpost-split"></i><span>Journey</span></a>
-        <a href="/map" class="scope-tab"><i class="bi bi-geo-alt"></i><span>Map</span></a>
-    </nav>
-
     <section class="planner-panel">
         <div class="planner-grid">
             <div>
@@ -73,6 +93,7 @@
                     <ul class="station-options" id="from-station-list" role="listbox" hidden></ul>
                 </div>
             </div>
+            <button class="swap-btn" id="swap-stations" type="button" aria-label="Swap origin and destination"><i class="bi bi-arrow-left-right"></i></button>
             <div>
                 <label class="field-label" for="to-station-input">To station</label>
                 <div class="station-combo" id="to-combo">
@@ -95,9 +116,12 @@
         <div id="result-count">0 trains</div>
     </div>
 
-    <section class="board-wrap">
+    <div class="planner-layout">
+    <div>
+    <section class="board-wrap" aria-labelledby="journey-options-title">
+        <h2 id="journey-options-title" class="visually-hidden">Journey options</h2>
         <div class="table-scroll">
-            <table>
+            <table aria-describedby="route-summary">
                 <thead>
                     <tr>
                         <th>Train</th>
@@ -125,6 +149,27 @@
             </table>
         </div>
     </section>
+    <section id="journey-detail" class="journey-detail" hidden aria-live="polite">
+        <div class="journey-head">
+            <div><div id="detail-train" class="journey-title">Train</div><div id="detail-route" class="journey-meta"></div></div>
+            <span id="detail-status" class="badge-status">Status</span>
+        </div>
+        <div id="journey-timeline" class="timeline"></div>
+    </section>
+    </div>
+    <aside class="planner-aside" aria-label="Journey insights">
+        <div class="insight-card">
+            <div class="insight-label">Fastest live option</div>
+            <div id="fastest-value" class="insight-value">Select a route</div>
+            <div id="fastest-meta" class="journey-meta">Calculated from current timetable results</div>
+        </div>
+        <div class="insight-card">
+            <div class="insight-label">Data source</div>
+            <div class="insight-value" style="font-size:1rem;color:var(--ir-green)"><i class="bi bi-broadcast-pin me-1"></i>Irish Rail live</div>
+            <div class="journey-meta">Times, status and stops come from the current service feed.</div>
+        </div>
+    </aside>
+    </div>
 </main>
 
 <script th:inline="javascript">

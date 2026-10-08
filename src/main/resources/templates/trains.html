@@ -147,7 +147,7 @@
 <body>
 
 <!-- ═══════ HEADER ═══════ -->
-<th:block th:replace="~{fragments/layout :: site-header(${stationName}, 'Irish Rail · Real-Time Board', true, 'LIVE', ${updatedAt}, 'changeView')}"></th:block>
+<th:block th:replace="~{fragments/layout :: site-header('Live Arrivals & Departures · ' + ${stationName}, 'Current services, expected times and operational status', true, 'LIVE', ${updatedAt}, 'changeView')}"></th:block>
 
 <!-- ═══════ TAB NAV ═══════ -->
 <nav class="tab-nav">
@@ -157,12 +157,6 @@
     <button class="tab-nav-btn" data-tab="analytics" onclick="showTab('analytics')">
         <i class="bi bi-bar-chart-line"></i> Analytics
     </button>
-    <a class="tab-nav-btn" href="/journey">
-        <i class="bi bi-signpost-split"></i> Journey
-    </a>
-    <a class="tab-nav-btn" href="/map">
-        <i class="bi bi-geo-alt"></i> Map
-    </a>
 </nav>
 
 <!-- ═══════ MAIN ═══════ -->
@@ -454,7 +448,7 @@
                 <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:.75rem">
                     <i class="bi bi-check2-circle me-1" style="color:var(--ir-green)"></i>On Time vs Delayed
                 </div>
-                <div style="flex:1;position:relative;min-height:200px">
+                <div style="flex:1;position:relative;min-height:200px;max-height:300px">
                     <canvas id="chart-ontime"></canvas>
                 </div>
             </div>

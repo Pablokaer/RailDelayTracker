@@ -331,7 +331,7 @@ function showDrawerPane(pane) {
 
 async function loadRoute(train) {
     const body = document.getElementById('route-body');
-    body.innerHTML = '<div class="empty-state" style="padding:1.2rem"><i class="bi bi-arrow-clockwise spin"></i> Carregando rota…</div>';
+    body.innerHTML = '<div class="empty-state" style="padding:1.2rem"><i class="bi bi-arrow-clockwise spin"></i> Loading journey progress…</div>';
 
     // A click on another train while this request is in flight must not draw the old route.
     const token = ++routeRequestToken;
@@ -343,7 +343,7 @@ async function loadRoute(train) {
 
         const stops = route.stops || [];
         if (!stops.length) {
-            body.innerHTML = '<div class="empty-state" style="padding:1.2rem">Sem rota publicada para este serviço.</div>';
+            body.innerHTML = '<div class="empty-state" style="padding:1.2rem">No published route is available for this service.</div>';
             drawLeg(train);
             return;
         }
@@ -351,7 +351,7 @@ async function loadRoute(train) {
         renderRouteList(route, train);
     } catch (error) {
         if (token !== routeRequestToken) return;
-        body.innerHTML = '<div class="empty-state" style="padding:1.2rem">Não foi possível carregar a rota.</div>';
+        body.innerHTML = '<div class="empty-state" style="padding:1.2rem">Unable to load journey progress.</div>';
         drawLeg(train);
     }
 }
@@ -437,7 +437,7 @@ function renderRouteList(route, train) {
             </div>
             <div class="history-stat">
                 <div class="history-stat-value" style="color:${markerColor(train)}">${stops.length - boundary}</div>
-                <div class="history-stat-label">Restantes</div>
+                <div class="history-stat-label">Remaining</div>
             </div>
         </div>`;
 
@@ -575,6 +575,8 @@ function updateMeta(data) {
     const timeText = capturedAt ? clockText(capturedAt) : '--:--:--';
     const clock = document.getElementById('clock');
     if (clock) clock.textContent = timeText;
+    const refreshMetric = document.getElementById('stat-refresh');
+    if (refreshMetric) refreshMetric.textContent = timeText.slice(0, 5);
 
     document.getElementById('capture-meta').textContent = capturedAt
         ? `${data.count} trains located · captured ${timeText}`
