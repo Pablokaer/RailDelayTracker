@@ -1,5 +1,6 @@
 package com.irishrail.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -11,7 +12,9 @@ import org.apache.hc.core5.util.TimeValue;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -79,5 +82,18 @@ public class RestClientConfig {
     @Bean
     public XmlMapper irishRailXmlMapper() {
         return new XmlMapper();
+    }
+
+    /**
+     * The mapper behind the app's own JSON endpoints.
+     *
+     * <p>{@code XmlMapper} is an {@code ObjectMapper}, so declaring it above made Boot's default
+     * mapper back off and every {@code /api} response was serialized as XML under a JSON content
+     * type, which broke the journey planner and the live map in the browser.
+     */
+    @Bean
+    @Primary
+    public ObjectMapper objectMapper(Jackson2ObjectMapperBuilder builder) {
+        return builder.createXmlMapper(false).build();
     }
 }
